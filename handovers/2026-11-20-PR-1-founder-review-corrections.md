@@ -3,6 +3,7 @@
 - **Date:** 2026-11-20
 - **Branch:** `docs/assignment-002-1-corrections`
 - **Pull request:** [PR #1](https://github.com/prabhurajvardhan/OpenFrontier/pull/1)
+- **Correction commit:** `4f49285`
 - **Status:** Ready for founder review; do not merge without founder approval
 
 ## Corrections completed
