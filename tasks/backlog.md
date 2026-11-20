@@ -38,7 +38,7 @@
 
 ### S4 — Token ledger and settlement spike
 
-**Objective:** Prove the corrected accounting design under concurrency and uncertain provider outcomes. **Dependencies:** B0, S1, S2. **Deliverable:** disposable PostgreSQL schema/procedures or test harness. **Acceptance:** the signed-ledger invariant nets reservation/debit/release to actual charge once; no negative available/held units; duplicate and conflicting idempotency are safe; pending holds remain unavailable; refunds are bounded. **Verification:** race, retry, interruption, timeout, duplicate callback, partial-refund, reconciliation, and deadlock-retry tests.
+**Objective:** Prove the corrected accounting design under concurrency and uncertain provider outcomes. **Dependencies:** B0, S1, S2. **Deliverable:** disposable PostgreSQL schema/procedures or test harness. **Acceptance:** the posted-ledger plus reservation-hold invariant nets actual charge once; no negative available/held units; duplicate and conflicting idempotency are safe; pending holds remain unavailable; refunds are bounded; provider usage above a hold is fully recorded through an explicit overage-reconciliation path without unauthorized negative balance. **Verification:** race, retry, interruption, timeout, duplicate callback, partial-refund, over-reservation, reconciliation, and deadlock-retry tests.
 
 ### S5 — Rewarded-ad verification and dynamic reward spike
 
