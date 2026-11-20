@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-20
 - **Branch:** `feat/backend-services`
-- **Status:** Development implementation complete for this checkpoint; production implementation not authorized
+- **Status:** Development implementation complete with correction fixes; production implementation not authorized
 - **Authorization:** `FOUNDER_APPROVED_DEVELOPMENT_IMPLEMENTATION`
 
 ## Completed work
@@ -17,6 +17,10 @@
 - Added a provider-independent development inference adapter with deterministic fallback output. It does not contact OpenRouter merely because an environment variable exists.
 - Added typed server contracts and an explicit development API contract document.
 - Added service tests covering session resolution, request validation, and conversation ownership.
+- Corrected concurrent idempotency using an atomic in-process operation reservation and SHA-256 payload fingerprint.
+- Corrected retries, in-progress responses, failed-operation handling, and duplicate-message prevention.
+- Removed character-count usage and false `settled` claims; development terminal events now use `not_applicable` and omit usage.
+- Made SSE writes cancellation-safe and health output runtime-derived.
 - No frontend source, database migration, payment integration, or production credential was added or modified by the backend slice.
 
 ## Changed files
@@ -30,6 +34,7 @@
 - `lib/server/services.ts`
 - `tests/services.test.ts`
 - `docs/api/backend-development-contract.md`
+- `docs/api/frontend-terminal-contract-change.md`
 - `package.json`, `package-lock.json`
 - Reused frontend baseline from `origin/feat/frontend-application`.
 
@@ -44,7 +49,7 @@
 ## Checks run
 
 - `npm run typecheck` — passed.
-- `npm test` — passed, 3 tests.
+- `npm test` — passed, 10 tests, including concurrency, completed retry, payload conflict, provider failure, cross-user access, production auth rejection, and terminal-schema checks.
 - `npm run lint` — passed.
 - `NEXT_TELEMETRY_DISABLED=1 npm run build` — passed; API routes compiled and were listed as dynamic routes.
 - Development HTTP smoke test on port 3001 — passed for health, session creation, conversation creation, SSE `text_delta`, and terminal events.
@@ -53,8 +58,9 @@
 
 ## Commits and PR
 
-- Commit: to be created in this handoff.
-- PR: Not created yet.
+- Original checkpoint commit: `1ac2d20`.
+- Correction commit: to be created in this handoff.
+- PR: [PR #7](https://github.com/prabhurajvardhan/OpenFrontier/pull/7), open and unmerged.
 - Merge: not performed.
 
 ## Remaining work

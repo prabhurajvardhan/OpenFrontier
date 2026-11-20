@@ -4,7 +4,9 @@ export type SafeErrorCode =
   | "invalid_request"
   | "provider_unavailable"
   | "not_found"
-  | "conflict";
+  | "conflict"
+  | "in_progress"
+  | "request_failed";
 
 export interface Session {
   id: string;
@@ -30,11 +32,6 @@ export interface Message {
   requestId?: string;
 }
 
-export interface NormalizedUsage {
-  inputTokens: number;
-  outputTokens: number;
-}
-
 export interface ChatRequest {
   conversationId: string | null;
   modelId: string;
@@ -44,8 +41,20 @@ export interface ChatRequest {
 
 export interface ChatTerminal {
   requestId: string;
-  usage: NormalizedUsage;
-  settlementStatus: "settled" | "pending_reconciliation";
+  settlementStatus: "not_applicable";
+  conversationId: string;
+}
+
+export type ChatOperationStatus = "processing" | "completed" | "failed";
+
+export interface ChatOperation {
+  fingerprint: string;
+  requestId: string;
+  userId: string;
+  status: ChatOperationStatus;
+  conversationId: string | null;
+  terminal?: ChatTerminal;
+  errorCode?: "provider_unavailable";
 }
 
 export interface InferenceAdapter {
@@ -56,5 +65,5 @@ export interface BackendStore {
   sessions: Map<string, Session>;
   conversations: Map<string, Conversation>;
   messages: Map<string, Message[]>;
-  idempotentChats: Map<string, ChatTerminal>;
+  chatOperations: Map<string, ChatOperation>;
 }

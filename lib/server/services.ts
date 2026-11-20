@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { BackendStore, ChatRequest, Conversation, InferenceAdapter, Message, Session } from "./contracts";
+import type { BackendStore, ChatOperation, ChatRequest, Conversation, InferenceAdapter, Message, Session } from "./contracts";
 
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const MAX_MESSAGE_LENGTH = 12_000;
@@ -9,8 +9,14 @@ export const store: BackendStore = {
   sessions: new Map(),
   conversations: new Map(),
   messages: new Map(),
-  idempotentChats: new Map(),
+  chatOperations: new Map(),
 };
+
+let testAdapter: InferenceAdapter | null = null;
+
+export function setInferenceAdapterForTests(adapter: InferenceAdapter | null): void {
+  testAdapter = adapter;
+}
 
 export function requestId(): string {
   return `req_${randomUUID()}`;
@@ -53,6 +59,37 @@ export function validateChatRequest(value: unknown): ChatRequest {
   return { conversationId, modelId: input.modelId, content: input.content.trim(), idempotencyKey: input.idempotencyKey };
 }
 
+export function fingerprintChat(input: ChatRequest): string {
+  return createHash("sha256").update(JSON.stringify([input.conversationId, input.modelId, input.content])).digest("hex");
+}
+
+export function reserveChatOperation(userId: string, input: ChatRequest, conversationId: string | null): { operation: ChatOperation; created: boolean } {
+  const key = `${userId}:${input.idempotencyKey}`;
+  const fingerprint = fingerprintChat(input);
+  const existing = store.chatOperations.get(key);
+  if (existing) {
+    if (existing.fingerprint !== fingerprint) throw new Error("conflict");
+    return { operation: existing, created: false };
+  }
+  const operation: ChatOperation = { fingerprint, requestId: requestId(), userId, status: "processing", conversationId };
+  store.chatOperations.set(key, operation);
+  return { operation, created: true };
+}
+
+export function markChatCompleted(userId: string, idempotencyKey: string, terminal: ChatOperation["terminal"]): void {
+  const operation = store.chatOperations.get(`${userId}:${idempotencyKey}`);
+  if (!operation || operation.status !== "processing") throw new Error("conflict");
+  operation.status = "completed";
+  operation.terminal = terminal;
+}
+
+export function markChatFailed(userId: string, idempotencyKey: string): void {
+  const operation = store.chatOperations.get(`${userId}:${idempotencyKey}`);
+  if (!operation || operation.status !== "processing") return;
+  operation.status = "failed";
+  operation.errorCode = "provider_unavailable";
+}
+
 export function getOrCreateConversation(userId: string, conversationId: string | null, firstMessage: string): Conversation {
   if (conversationId) {
     const existing = store.conversations.get(conversationId);
@@ -90,20 +127,17 @@ export function safeError(code: string): { code: string; message: string } {
     invalid_request: "The request could not be validated.",
     not_found: "The requested resource was not found.",
     provider_unavailable: "The inference provider is unavailable.",
-    conflict: "The idempotency key was already used for another request.",
+    conflict: "The idempotency key was already used with a different payload.",
+    in_progress: "A request with this idempotency key is already processing.",
+    request_failed: "The previous request failed; retry with a new idempotency key.",
   };
   return { code, message: messages[code] ?? "The request could not be completed." };
 }
 
 export function developmentAdapter(): InferenceAdapter {
+  if (testAdapter) return testAdapter;
   return {
     async *stream(input) {
-      const configured = process.env.OPENROUTER_API_KEY;
-      if (configured) {
-        yield "Development OpenRouter wiring is reserved for the provider adapter spike. ";
-        yield "No provider call is made by this safe default until model and usage policy are configured.";
-        return;
-      }
       const response = `Development response for ${input.modelId}: I received “${input.content}”. The backend stream is active, but no provider credential is configured.`;
       for (const part of response.match(/.{1,48}(?:\s|$)/g) ?? [response]) {
         await new Promise((resolve) => setTimeout(resolve, 5));

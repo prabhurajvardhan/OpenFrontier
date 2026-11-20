@@ -1,6 +1,5 @@
-import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { appendMessage, developmentAdapter, getOrCreateConversation, resolveSession, safeError, store, validateChatRequest } from "@/lib/server/services";
+import { appendMessage, developmentAdapter, getOrCreateConversation, markChatCompleted, markChatFailed, reserveChatOperation, resolveSession, safeError, store, validateChatRequest } from "@/lib/server/services";
 
 function event(payload: unknown): string {
   return `data: ${JSON.stringify(payload)}\n\n`;
@@ -16,39 +15,86 @@ export async function POST(request: Request) {
     const code = error instanceof Error ? error.message : "invalid_request";
     return NextResponse.json({ error: safeError(code) }, { status: 400 });
   }
-  const key = `${session.userId}:${input.idempotencyKey}`;
-  const prior = store.idempotentChats.get(key);
-  if (prior) {
-    return NextResponse.json({ error: safeError("conflict"), terminal: prior }, { status: 409 });
+
+  let operation;
+  const operationKey = `${session.userId}:${input.idempotencyKey}`;
+  const existing = store.chatOperations.get(operationKey);
+  if (existing) {
+    try {
+      const reserved = reserveChatOperation(session.userId, input, existing.conversationId);
+      operation = reserved.operation;
+    } catch (error) {
+      return NextResponse.json({ error: safeError(error instanceof Error ? error.message : "conflict") }, { status: 409 });
+    }
+    if (operation.status === "processing") {
+      return NextResponse.json({ status: "in_progress", requestId: operation.requestId }, { status: 202 });
+    }
+    if (operation.status === "failed") {
+      return NextResponse.json({ error: safeError("request_failed"), requestId: operation.requestId, retryPolicy: "new_idempotency_key" }, { status: 503 });
+    }
+    return NextResponse.json({ error: safeError("conflict"), terminal: operation.terminal }, { status: 409 });
   }
-  let conversation;
+
+  if (input.conversationId) {
+    try {
+      getOrCreateConversation(session.userId, input.conversationId, input.content);
+    } catch {
+      return NextResponse.json({ error: safeError("not_found") }, { status: 404 });
+    }
+  }
   try {
-    conversation = getOrCreateConversation(session.userId, input.conversationId, input.content);
+    operation = reserveChatOperation(session.userId, input, input.conversationId).operation;
   } catch (error) {
-    return NextResponse.json({ error: safeError(error instanceof Error ? error.message : "not_found") }, { status: 404 });
+    return NextResponse.json({ error: safeError(error instanceof Error ? error.message : "conflict") }, { status: 409 });
   }
-  const requestId = `req_${randomUUID()}`;
-  const userMessage = { id: `msg_${randomUUID()}`, conversationId: conversation.id, role: "user" as const, content: input.content, createdAt: new Date().toISOString(), requestId };
-  appendMessage(userMessage);
+  const conversation = getOrCreateConversation(session.userId, input.conversationId, input.content);
+  operation.conversationId = conversation.id;
+  const requestId = operation.requestId;
+  appendMessage({ id: `msg_${requestId}`, conversationId: conversation.id, role: "user", content: input.content, createdAt: new Date().toISOString(), requestId });
+
+  let connected = true;
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const encoder = new TextEncoder();
       let output = "";
+      const send = (payload: unknown): boolean => {
+        if (!connected) return false;
+        try {
+          controller.enqueue(encoder.encode(event(payload)));
+          return true;
+        } catch {
+          connected = false;
+          return false;
+        }
+      };
       try {
         for await (const chunk of developmentAdapter().stream({ modelId: input.modelId, content: input.content })) {
           output += chunk;
-          controller.enqueue(encoder.encode(event({ type: "text_delta", text: chunk })));
+          if (!send({ type: "text_delta", text: chunk })) break;
         }
-        const assistantMessage = { id: `msg_${randomUUID()}`, conversationId: conversation.id, role: "assistant" as const, content: output, createdAt: new Date().toISOString(), requestId };
-        appendMessage(assistantMessage);
-        const terminal = { requestId, usage: { inputTokens: input.content.length, outputTokens: output.length }, settlementStatus: "settled" as const };
-        store.idempotentChats.set(key, terminal);
-        controller.enqueue(encoder.encode(event({ type: "terminal", ...terminal, conversationId: conversation.id })));
+        if (!connected) {
+          markChatFailed(session.userId, input.idempotencyKey);
+          return;
+        }
+        appendMessage({ id: `msg_${requestId}_assistant`, conversationId: conversation.id, role: "assistant", content: output, createdAt: new Date().toISOString(), requestId });
+        const terminal = { requestId, settlementStatus: "not_applicable" as const, conversationId: conversation.id };
+        markChatCompleted(session.userId, input.idempotencyKey, terminal);
+        send({ type: "terminal", ...terminal });
       } catch {
-        controller.enqueue(encoder.encode(event({ type: "error", ...safeError("provider_unavailable"), requestId })));
+        markChatFailed(session.userId, input.idempotencyKey);
+        send({ type: "error", ...safeError("provider_unavailable"), requestId });
       } finally {
-        controller.close();
+        if (connected) {
+          try {
+            controller.close();
+          } catch {
+            connected = false;
+          }
+        }
       }
+    },
+    cancel() {
+      connected = false;
     },
   });
   return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Request-Id": requestId } });
