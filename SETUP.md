@@ -2,24 +2,27 @@
 
 ## Requirements
 
-Use Node.js 22 or newer and npm. This repository currently contains a bounded UI-only preview. The recommended application stack in `docs/decisions/ADR-0002-launch-technology.md` is still Proposed, so this scaffold must not be treated as approval of the production architecture.
+Use Node.js 22 or newer and npm. This repository contains a bounded, UI-only frontend preview. The recommended application stack in `docs/decisions/ADR-0002-launch-technology.md` remains **Proposed**; this scaffold does not approve the production architecture.
 
 ## Run locally
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
-Open the local URL printed by Next.js. The root route is the product landing page; `/chat` opens the primary chat preview. Wallet, authentication, and settings screens will be added as the frontend task progresses.
+Open the local URL printed by Next.js. The landing page is `/`, the primary chat preview is `/chat`, sign-in preview is `/sign-in`, the wallet/rewards preview is `/wallet`, and account settings are at `/settings`.
 
 ## Checks
 
 ```bash
+npm run lint
 npm run typecheck
 npm run build
 ```
 
+`npm run lint` uses the ESLint flat configuration. The checked-in lockfile pins the dependency tree for reproducible installs.
+
 ## Preview limitations
 
-The user interface uses static sample data and a local mock adapter. The chat response is deterministic sample text. The sample account, balance, ledger, model names, and ad/reward states are not live services and do not represent a real account, inference request, token deduction, ad impression, or reward grant. No real authentication, database, backend API, payment, ad network, or model provider is connected. Do not add credentials to browser code. Future API types in `lib/api/types.ts` are proposals based on the current repository documents, not a deployed contract.
+The interface uses static sample data and an isolated local mock adapter. Chat responses are deterministic sample text presented with an explicitly simulated stream. The sample account, balance, ledger, model names, token usage, and ad/reward states are not live services and do not represent a real account, inference request, token deduction, ad impression, or reward grant. Authentication and Google sign-in are presentation-only; profile and privacy controls are local preview state. No real authentication, database, backend API, payment, ad network, or model provider is connected. Do not add credentials to browser code. Future API types in `lib/api/types.ts` are a proposed frontend boundary based on repository documents, not a deployed or approved contract; the adapter in `lib/api/mock-api.ts` is sample-only.

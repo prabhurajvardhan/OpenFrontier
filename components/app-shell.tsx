@@ -48,7 +48,6 @@ export function AppShell({ children, title = "Open Frontier" }: { children: Reac
     <div className="app-shell">
       <aside className="app-sidebar" aria-label="Main navigation">
         <div className="sidebar-brand"><Link href="/chat"><Brand /></Link></div>
-        <Link className="side-link" href="/chat" aria-label="Start a new conversation"><Icon name="plus" /> New conversation</Link>
         <div className="sidebar-label">Workspace</div>
         {links.map((link) => <Link key={link.href} className={`side-link ${pathname === link.href ? "active" : ""}`} href={link.href}><Icon name={link.icon} />{link.label}</Link>)}
         <div className="side-spacer" />

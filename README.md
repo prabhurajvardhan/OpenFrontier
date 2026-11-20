@@ -26,7 +26,7 @@ The repository's architecture, API, database, and security documents remain prop
 
 ## Frontend preview
 
-Requirements: Node.js 22+ and npm. Run `npm install`, then `npm run dev` to start the local preview. Run `npm run typecheck` and `npm run build` for checks. All balances, transactions, conversations, authentication, and responses in this scaffold are local sample UI states and are not real account or service data.
+Requirements: Node.js 22+ and npm. Run `npm ci`, then `npm run dev` to start the local preview. Run `npm run lint`, `npm run typecheck`, and `npm run build` for checks. All balances, transactions, conversations, authentication, and responses in this scaffold are local sample UI states and are not real account or service data. See [`SETUP.md`](SETUP.md) for the full route inventory and limitations.
 
 ## Status vocabulary
 
