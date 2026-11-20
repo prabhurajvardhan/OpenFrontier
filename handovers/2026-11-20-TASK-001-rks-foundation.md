@@ -26,7 +26,7 @@
 
 ## Commits and pull requests
 
-- **Commit:** To be recorded after the initial commit is created.
+- **Commit:** `c603b4fc900c430d3806fa4d33156854cb11cc9c`
 - **PR:** Not created.
 
 ## Decisions
