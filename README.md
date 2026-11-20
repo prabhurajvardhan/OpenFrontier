@@ -22,7 +22,11 @@ This repository is the single source of truth for requirements, architecture, te
 
 ## Current repository state
 
-The repository began with no commits, source code, or technology decisions. This initial change establishes the operational RKS only; it does **not** implement the AI chat application.
+The repository's architecture, API, database, and security documents remain proposals awaiting approval. `TASK-003` adds a bounded frontend-only preview scaffold with mock data; it does not implement backend services, account sessions, model inference, durable chat, token accounting, or rewarded ads. See [`docs/architecture/frontend-client.md`](docs/architecture/frontend-client.md) and [`tasks/active/TASK-003-frontend-application.md`](tasks/active/TASK-003-frontend-application.md).
+
+## Frontend preview
+
+Requirements: Node.js 22+ and npm. Run `npm install`, then `npm run dev` to start the local preview. Run `npm run typecheck` and `npm run build` for checks. All balances, transactions, conversations, authentication, and responses in this scaffold are local sample UI states and are not real account or service data.
 
 ## Status vocabulary
 
