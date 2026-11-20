@@ -13,6 +13,8 @@ drop policy if exists preferences_self_all on public.user_preferences;
 drop policy if exists profiles_self_update on public.profiles;
 drop policy if exists profiles_self_select on public.profiles;
 
+drop trigger if exists token_ledger_refund_cap on public.token_ledger;
+drop function if exists public.assert_refund_within_debit();
 drop function if exists public.refresh_wallet_projection(uuid);
 drop table if exists public.overage_reconciliations;
 drop table if exists public.provider_usage_records;

@@ -26,7 +26,9 @@ The schema deliberately records provider usage dimensions separately: uncached i
 
 ## Security posture
 
-RLS is enabled on user-owned tables and on user-readable wallet/ledger/request projections. Policies derive ownership from `auth.uid()` rather than a client-supplied profile ID. Ordinary `anon` and `authenticated` roles have no write permissions on wallet, ledger, holds, inference, or accounting tables. Server-only transaction functions and service-role access must be added only after the backend agent agrees to the contract and security review is complete. Ledger metadata must be redacted in any user-facing API/view before launch.
+RLS is enabled on all tables in this draft. Policies derive ownership from `auth.uid()` rather than a client-supplied profile ID. Active model catalogue rows have an explicit public read policy; model prices, provider usage, and overage reconciliation records have no ordinary-client policy and have explicit grants revoked. Ordinary `anon` and `authenticated` roles have no write permissions on wallet, ledger, holds, inference, or accounting tables. Ledger metadata must be redacted in any user-facing API/view before launch.
+
+The projection refresh function is `SECURITY DEFINER` with an explicit `pg_catalog, public, auth, pg_temp` search path. Execution is revoked from `PUBLIC`, `anon`, and `authenticated`, and granted only to the Supabase `service_role`. It rejects anonymous or mismatched profile IDs, locks the profile row, safely initializes a missing wallet row, and computes posted and held snapshots in that transaction. The refund trigger takes the accounting-request lock and prevents cumulative refunds from exceeding the settled usage debit.
 
 The draft does not grant administrative access, expose service-role credentials, or touch a production database. The `*.down.sql` file is intended only for a disposable test database.
 
@@ -47,6 +49,6 @@ No live PostgreSQL runner is included in this repository yet; therefore this che
 ## Open decisions / blockers
 
 - Founder approval of wallet unit, price scale, cached-token treatment, rounding, safety margin, uncertain usage, overage resolution, and retention.
-- Backend agreement on request/settlement function signatures and application identity mapping.
-- Security review of Supabase RLS, server-only transaction functions, audit events, and redacted ledger reads.
+- Backend agreement on request/settlement function signatures and application identity mapping. The required contract is: lock profile then accounting request; for settlement, close the hold, insert one usage debit, update the accounting state, and refresh the projection in one transaction; terminal retries return the stored result.
+- Security review of Supabase RLS, service-role-only transaction functions, audit events, and redacted ledger reads.
 - Selection and approval of development seed models/prices.

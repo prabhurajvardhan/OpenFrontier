@@ -156,7 +156,19 @@ create table public.token_ledger (
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   unique (accounting_request_id, operation_id),
-  unique (provider_event_id)
+  unique (profile_id, operation_id),
+  unique (provider_event_id),
+  constraint token_ledger_sign_by_type check (
+    (entry_type in ('reward_credit', 'topup_credit', 'refund') and amount_units > 0)
+    or (entry_type = 'usage_debit' and amount_units < 0)
+    or entry_type = 'admin_adjustment'
+  ),
+  constraint token_ledger_source_by_type check (
+    (entry_type = 'usage_debit' and accounting_request_id is not null)
+    or (entry_type in ('reward_credit', 'topup_credit') and provider_event_id is not null)
+    or (entry_type = 'refund' and (accounting_request_id is not null or provider_event_id is not null))
+    or (entry_type = 'admin_adjustment' and reason is not null and char_length(reason) > 0)
+  )
 );
 
 create table public.provider_usage_records (
@@ -195,17 +207,59 @@ create index token_ledger_profile_created_idx on public.token_ledger (profile_id
 
 -- Keep the projection guarded and immutable to ordinary clients.
 create or replace function public.refresh_wallet_projection(p_profile_id uuid)
-returns void language plpgsql security definer set search_path = public as $$
+returns void language plpgsql security definer
+set search_path = pg_catalog, public, auth, pg_temp as $$
 declare
   v_posted bigint;
   v_held bigint;
 begin
+  if auth.role() <> 'service_role' and (auth.uid() is null or p_profile_id <> auth.uid()) then
+    raise exception 'profile authorization mismatch';
+  end if;
+  perform 1 from public.profiles where id = p_profile_id for update;
+  if not found then raise exception 'profile does not exist'; end if;
+  insert into public.wallet_accounts (profile_id) values (p_profile_id)
+    on conflict (profile_id) do nothing;
   select coalesce(sum(amount_units), 0) into v_posted from public.token_ledger where profile_id = p_profile_id;
   select coalesce(sum(reserved_units), 0) into v_held from public.reservation_holds where profile_id = p_profile_id and status = 'active';
   if v_posted < v_held then raise exception 'wallet invariant violated for profile %', p_profile_id; end if;
   update public.wallet_accounts set posted_units = v_posted, held_units = v_held, updated_at = now() where profile_id = p_profile_id;
 end;
 $$;
+
+revoke all on function public.refresh_wallet_projection(uuid) from public, anon, authenticated;
+grant execute on function public.refresh_wallet_projection(uuid) to service_role;
+
+create or replace function public.assert_refund_within_debit()
+returns trigger language plpgsql security definer
+set search_path = pg_catalog, public, auth, pg_temp as $$
+declare
+  v_debit bigint;
+  v_refunded bigint;
+begin
+  if new.entry_type <> 'refund' then return new; end if;
+  if new.accounting_request_id is null then
+    raise exception 'refund requires an accounting request';
+  end if;
+  perform 1 from public.accounting_requests where id = new.accounting_request_id for update;
+  select coalesce(-sum(amount_units), 0) into v_debit
+    from public.token_ledger
+    where accounting_request_id = new.accounting_request_id and entry_type = 'usage_debit';
+  select coalesce(sum(amount_units), 0) into v_refunded
+    from public.token_ledger
+    where accounting_request_id = new.accounting_request_id and entry_type = 'refund';
+  if v_refunded + new.amount_units > v_debit then
+    raise exception 'refund exceeds settled debit';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger token_ledger_refund_cap
+  before insert on public.token_ledger
+  for each row execute function public.assert_refund_within_debit();
+revoke all on function public.assert_refund_within_debit() from public, anon, authenticated;
+grant execute on function public.assert_refund_within_debit() to service_role;
 
 -- Supabase RLS: browser sessions can read/write only owned non-financial data.
 alter table public.profiles enable row level security;
@@ -217,6 +271,10 @@ alter table public.token_ledger enable row level security;
 alter table public.reservation_holds enable row level security;
 alter table public.inference_requests enable row level security;
 alter table public.accounting_requests enable row level security;
+alter table public.model_catalogue enable row level security;
+alter table public.model_price_versions enable row level security;
+alter table public.provider_usage_records enable row level security;
+alter table public.overage_reconciliations enable row level security;
 
 create policy profiles_self_select on public.profiles for select using (id = (select auth.uid()));
 create policy profiles_self_update on public.profiles for update using (id = (select auth.uid())) with check (id = (select auth.uid()));
@@ -229,9 +287,19 @@ create policy ledger_self_select on public.token_ledger for select using (profil
 create policy holds_self_select on public.reservation_holds for select using (profile_id = (select auth.uid()));
 create policy inference_self_select on public.inference_requests for select using (profile_id = (select auth.uid()));
 create policy accounting_self_select on public.accounting_requests for select using (profile_id = (select auth.uid()));
+create policy active_model_catalogue_read on public.model_catalogue for select
+  using (status = 'active');
 
 -- No INSERT/UPDATE/DELETE policies are intentionally granted on financial tables.
-revoke insert, update, delete on public.wallet_accounts, public.token_ledger, public.reservation_holds, public.accounting_requests from anon, authenticated;
+revoke all on public.model_catalogue, public.model_price_versions, public.provider_usage_records, public.overage_reconciliations from anon, authenticated;
+revoke all on public.wallet_accounts, public.token_ledger, public.reservation_holds, public.accounting_requests from anon, authenticated;
 revoke insert, update, delete on public.inference_requests from anon, authenticated;
+grant select on public.model_catalogue to anon, authenticated;
+grant select on public.wallet_accounts, public.token_ledger, public.reservation_holds, public.inference_requests, public.accounting_requests to authenticated;
+
+-- Backend settlement contract: lock profile then accounting request, close the hold,
+-- insert one usage_debit, update accounting state, and refresh the projection in one
+-- transaction. Unique operation IDs make retries replayable; callers must return the
+-- stored result for a terminal request instead of inserting a second debit.
 
 -- Seed is deliberately empty: pricing/models require founder approval and environment-specific review.
