@@ -1,6 +1,6 @@
 # TASK-003 — Open Frontier frontend application
 
-- **Status:** In progress
+- **Status:** Completed
 - **Assignee:** Frontend Developer (Manus)
 - **Created:** 2026-11-20
 - **Updated:** 2026-11-20
@@ -46,15 +46,15 @@ Deliver a responsive Open Frontier frontend prototype that follows the Nanoware 
 
 ## Acceptance criteria
 
-- [ ] A working responsive frontend provides the landing page, authentication, chat, wallet/rewards, and account/settings screens.
-- [ ] Reusable UI components and a consistent design system use Nanoware-inspired light surfaces, `#0F172A` navy, and `#CD9F4E` gold; the chat remains the primary app interface.
-- [ ] Chat includes conversation history, new conversation, model selection, composer, Markdown/code rendering, copy/regenerate controls, and loading/error presentation.
-- [ ] Mock data and typed API contracts are separate; mock-only, simulated, pending, and unavailable behavior is visibly identified and is never presented as a live integration or actual token/reward grant.
-- [ ] Wallet and chat usage are transparent, sample balances/transactions are labeled as examples, and no client control can claim or finalize a real balance/reward.
-- [ ] Accessible interactions and mobile/tablet/desktop layouts are provided, with meaningful empty, loading, error, disabled, verification, and success/pending states.
-- [ ] No backend/database implementation, secret, or service-role credential is added; architecture/API proposal statuses remain unchanged.
-- [ ] Setup documentation, task status, architecture/API documentation as needed, and a handover accurately reflect implementation and open integration work.
-- [ ] Applicable build, type-check, and lint checks pass, and the change is committed and pushed on `feat/frontend-application` with a separate unmerged PR.
+- [x] A working responsive frontend provides the landing page, authentication, chat, wallet/rewards, and account/settings screens.
+- [x] Reusable UI components and a consistent design system use Nanoware-inspired light surfaces, `#0F172A` navy, and `#CD9F4E` gold; the chat remains the primary app interface.
+- [x] Chat includes conversation history, new conversation, model selection, composer, Markdown/code rendering, copy/regenerate controls, and loading/error presentation.
+- [x] Mock data and typed API contracts are separate; mock-only, simulated, pending, and unavailable behavior is visibly identified and is never presented as a live integration or actual token/reward grant.
+- [x] Wallet and chat usage are transparent, sample balances/transactions are labeled as examples, and no client control can claim or finalize a real balance/reward.
+- [x] Accessible interactions and mobile/tablet/desktop layouts are provided, with meaningful empty, loading, error, disabled, verification, and success/pending states.
+- [x] No backend/database implementation, secret, or service-role credential is added; architecture/API proposal statuses remain unchanged.
+- [x] Setup documentation, task status, architecture/API documentation as needed, and a handover accurately reflect implementation and open integration work.
+- [x] Applicable build, type-check, and lint checks pass, and the change is committed and pushed on `feat/frontend-application` with a separate unmerged PR.
 
 ## Testing requirements
 
@@ -68,4 +68,4 @@ Deliver a responsive Open Frontier frontend prototype that follows the Nanoware 
 
 ## Progress / blockers
 
-Repository onboarding complete. Existing repository contains documentation only, the requested feature branch did not exist, and the proposed architecture/API contracts are not approved or implemented. A bounded, mock-driven frontend scaffold is authorized by this task; real integrations remain out of scope.
+Completed and pushed to `feat/frontend-application`. Milestones: initial preview `e0907f4`, primary frontend `bfdb812`, and final fixture/accessibility follow-up `01249e5`. Final `npm run lint`, `npm run typecheck`, production build, `npm audit`, and `npm audit --omit=dev` all passed; both audits reported zero vulnerabilities. All five application routes returned HTTP 200 on the production preview. Browser checks exercised local wallet empty/error and reward pending states, chat simulated error, sign-up simulated pending/success, and real ArrowRight/ArrowLeft tab navigation with focus and selection moving together. PR #6 is open against `main` and remains unmerged. See `handovers/2026-11-20-task-003-frontend-application.md` for preview, boundaries, and backend follow-ups. Architecture and API proposals remain Proposed and unapproved.
