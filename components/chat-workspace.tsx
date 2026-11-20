@@ -45,6 +45,7 @@ export function ChatWorkspace() {
   const [model, setModel] = useState(models[0]);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [simulateNextError, setSimulateNextError] = useState(false);
 
   useEffect(() => {
     void mockApi.listConversations().then(setConversations);
@@ -70,7 +71,10 @@ export function ChatWorkspace() {
     const assistantMessage: Message = { id: `assistant-${stamp}`, role: "assistant", content: "", time: "Preview", demo: true, pending: true };
     setMessages((items) => [...items, userMessage, assistantMessage]);
     setBusy(true);
+    const shouldSimulateError = simulateNextError;
+    if (shouldSimulateError) setSimulateNextError(false);
     try {
+      if (shouldSimulateError) throw new Error("Simulated local preview failure");
       let result = "";
       for await (const event of mockApi.submitChat({ conversationId: selectedConversation, modelId: model, content: trimmed, idempotencyKey: `preview-${stamp}` })) {
         if (event.type === "text_delta") {
@@ -78,6 +82,7 @@ export function ChatWorkspace() {
           const snapshot = result;
           setMessages((items) => items.map((item) => item.id === assistantMessage.id ? { ...item, content: snapshot } : item));
         }
+        if (event.type === "error") throw new Error(event.code);
       }
       setMessages((items) => items.map((item) => item.id === assistantMessage.id ? { ...item, pending: false } : item));
       setConversations((items) => items.map((item) => item.id === selectedConversation && item.title === "New conversation" ? { ...item, title: trimmed.slice(0, 35) } : item));
@@ -92,8 +97,11 @@ export function ChatWorkspace() {
     if (busy) return;
     setNotice("Regenerating fixed sample content locally. No model request or token charge will occur.");
     setBusy(true);
+    const shouldSimulateError = simulateNextError;
+    if (shouldSimulateError) setSimulateNextError(false);
     setMessages((items) => items.map((item) => item.id === assistantId ? { ...item, content: "", pending: true } : item));
     try {
+      if (shouldSimulateError) throw new Error("Simulated local preview failure");
       let result = "";
       for await (const event of mockApi.submitChat({ conversationId: selectedConversation, modelId: model, content: prompt, idempotencyKey: `preview-regenerate-${Date.now()}` })) {
         if (event.type === "text_delta") {
@@ -140,6 +148,10 @@ export function ChatWorkspace() {
             <div><div className="eyebrow">A thoughtful space to explore</div><h1>{selectedTitle}</h1></div>
             <div className="model-select"><Icon name="spark" size={15} /><label htmlFor="model-select">Model</label><select id="model-select" value={model} onChange={(event) => setModel(event.target.value)} aria-label="Select preview model">{models.map((name) => <option key={name} value={name}>{name}</option>)}</select></div>
           </div>
+          <details className="preview-state-tools">
+            <summary>Explore local chat states</summary>
+            <div className="preview-state-controls"><label><input type="checkbox" checked={simulateNextError} onChange={(event) => setSimulateNextError(event.target.checked)} /> Simulate an error on the next response</label><p>The next response uses a local error fixture only; no model request is sent.</p></div>
+          </details>
           <details className="mobile-history"><summary><Icon name="clock" size={14} /> Conversation history <span>{conversations.length} examples</span></summary><div className="mobile-history-list">{conversationLinks}<button type="button" className="button button-secondary" onClick={newConversation}><Icon name="plus" size={14} /> New conversation</button></div></details>
           {messages.length === 0 ? <div className="chat-empty">
             <div className="chat-empty-mark"><Icon name="spark" size={27} /></div>
