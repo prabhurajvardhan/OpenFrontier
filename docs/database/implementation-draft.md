@@ -30,6 +30,8 @@ RLS is enabled on all tables in this draft. Policies derive ownership from `auth
 
 The projection refresh function is `SECURITY DEFINER` with an explicit `pg_catalog, public, auth, pg_temp` search path. Execution is revoked from `PUBLIC`, `anon`, and `authenticated`, and granted only to the Supabase `service_role`. It rejects anonymous or mismatched profile IDs, locks the profile row, safely initializes a missing wallet row, and computes posted and held snapshots in that transaction. The refund trigger takes the accounting-request lock and prevents cumulative refunds from exceeding the settled usage debit.
 
+Correction 002 adds an ordered follow-up migration rather than rewriting the foundation migration. Composite foreign keys bind `profile_id` together with every account-scoped request or conversation reference. Refunds must reference a settled accounting request and retain `provider_event_id` only as an optional audit field. Raw `token_ledger` SELECT is revoked from browser roles; `wallet_ledger_public` is a `security_invoker` view exposing only ID, type, amount, timestamp, and a safe reason label. Wallet inserts lock the profile first and the accounting request second, ledger rows are append-only, and reservation-hold identity/state transitions are guarded.
+
 The draft does not grant administrative access, expose service-role credentials, or touch a production database. The `*.down.sql` file is intended only for a disposable test database.
 
 ## Fresh database verification
@@ -43,8 +45,11 @@ With a disposable Supabase/PostgreSQL instance and the required `auth` schema av
 5. In a backend transaction harness, lock account rows before accounting request rows, race two reservations, retry settlement, submit conflicting idempotency payloads, and resolve a pending hold. Assert no negative `available_units` or duplicate operation is possible.
 6. Rebuild `posted_units` and `held_units` from the immutable tables and compare them with `wallet_accounts`.
 7. Apply `20261120120000_database_foundation_draft.down.sql` only after the disposable test completes, then confirm the objects are removed.
+8. Apply `20261120130000_database_integrity_privacy_correction.sql` after the foundation migration and run `tests/sql/database_foundation_correction_002.sql` with disposable fixture IDs. Roll back the correction with its matching `.down.sql` file.
 
 No live PostgreSQL runner is included in this repository yet; therefore this checkpoint records the migration and verification contract but does not claim runtime migration or concurrency tests have passed.
+
+The disposable SQL suite covers cross-account FK rejection, refund-without-request rejection, append-only enforcement, redacted-view columns, and raw-table/view privilege checks when executed with the required fixture variables. Separate-session tests are still required for concurrent refunds/reservations, duplicate settlement, two-user RLS isolation, and projection rebuild consistency.
 
 ## Open decisions / blockers
 

@@ -1,44 +1,44 @@
-# Handover — Open Frontier database foundation security correction
+# Handover — Open Frontier database foundation correction 002
 
 - **Date:** 2026-11-20
 - **Branch:** `feat/database-foundation`
 - **Base:** `main`
-- **Previous commit:** `9d29b7b`
+- **Previous commit:** `b7232f9`
 - **PR:** [#8 — database foundation draft](https://github.com/prabhurajvardhan/OpenFrontier/pull/8)
 - **Status:** Proposed / review-only / not production-ready
 
-## Targeted corrections completed
+## Implemented corrections
 
-The existing accounting separation and migration structure were preserved. The migration now restricts `refresh_wallet_projection` execution from `PUBLIC`, `anon`, and `authenticated`, grants it only to `service_role`, uses an explicit safe search path, rejects anonymous or mismatched profile IDs, locks the profile row, and initializes a missing wallet row safely.
+The foundation migration was not rewritten. An ordered follow-up migration, `20261120130000_database_integrity_privacy_correction.sql`, addresses the four remaining review issues.
 
-All draft tables now have explicit RLS enabled. Active model catalogue reads use an explicit policy. Model prices, provider usage, and overage reconciliation records have no ordinary-client access, with explicit least-privilege grants/revokes added. Wallet, ledger, hold, inference, and accounting projections remain readable only where their existing ownership policies permit it, and ordinary clients cannot write financial records.
+For cross-account integrity, composite unique keys and composite foreign keys bind profile ownership to inference requests, conversations, reservation holds, and ledger accounting-request references. Nullable conversation and accounting references remain nullable where the original model allowed them.
 
-Financial ledger constraints now enforce credit/debit sign conventions and source references. Operation IDs are unique per profile as well as per accounting request. A transaction-level refund trigger locks the accounting request and rejects cumulative refunds above the settled usage debit. The migration documents the backend settlement contract: lock profile then accounting request, close the hold, insert one usage debit, update state, refresh the projection atomically, and replay the stored result on terminal retries.
+For refund correctness, the source constraint now requires every refund to reference an accounting request. The trigger requires that request to be settled, preserves the accounting-request row lock, and rejects cumulative refunds above the settled usage debit. Provider event IDs remain optional audit references rather than substitutes for the source request.
 
-## Files changed in this correction
+For ledger privacy, raw `token_ledger` SELECT is revoked from `anon` and `authenticated`. The `security_invoker` view `wallet_ledger_public` exposes only ID, entry type, amount, timestamp, and a safe reason label, with no metadata, provider event ID, or internal accounting identifier.
 
-- `supabase/migrations/20261120120000_database_foundation_draft.sql`
-- `supabase/migrations/20261120120000_database_foundation_draft.down.sql`
+For wallet concurrency and mutation integrity, wallet-affecting inserts lock the profile first and accounting request second. Ledger updates/deletes are rejected by append-only triggers. Reservation hold identity is immutable and status transitions are guarded. The existing projection refresh function remains the rebuild path and its lock-order/atomic-settlement contract is documented.
+
+## Files changed
+
+- `supabase/migrations/20261120130000_database_integrity_privacy_correction.sql`
+- `supabase/migrations/20261120130000_database_integrity_privacy_correction.down.sql`
+- `tests/sql/database_foundation_correction_002.sql`
 - `docs/database/implementation-draft.md`
 - This handover
 
-## Verified checks
+## Checks actually executed
 
-- Existing migration was targeted with focused corrections; the posted-ledger/reservation-hold separation was preserved.
-- `git diff --check` was run after the correction.
-- Static inspection confirms explicit RLS for model catalogue, model prices, provider usage, and overage reconciliation.
-- Static inspection confirms function execution revoke/grant statements, explicit search path, profile authorization guard, profile-row lock, missing-wallet initialization, sign/source constraints, refund trigger, and rollback cleanup.
-- Static inspection confirms no `GREATEST(0, ...)` balance update in `supabase/migrations`.
-- No frontend/backend application source, production database, production migration, credentials, or pricing/wallet decisions were changed.
+Static checks were run for diff hygiene, presence of the correction migration and rollback, composite-FK declarations, refund source/trigger logic, redacted-view definition, raw ledger privilege revocation, append-only triggers, and correction rollback cleanup. No production database or application source was touched.
 
-## Unverified checks
+## Checks not executed
 
-PostgreSQL/Supabase migration execution, rollback execution, live RLS checks with multiple authenticated users and `anon`, concurrent reservation tests, duplicate settlement tests, conflicting idempotency tests, refund-bound tests, and projection-rebuild tests remain unverified. PostgreSQL tooling is unavailable in this sandbox, so none of these are claimed as passed.
+PostgreSQL/Supabase migration execution, rollback execution, cross-account runtime inserts, refund-bound runtime tests, concurrent refund races, raw-table privilege tests, two-user RLS isolation, concurrent reservation races, duplicate settlement retries, and projection rebuild tests were not run because PostgreSQL tooling is unavailable in this sandbox. The SQL suite is prepared but these results are not claimed as passed.
 
-## Remaining blockers and backend contract
+## Remaining risks and blockers
 
-Founder approval remains required for wallet denomination, pricing, rounding, cached-token treatment, safety margin, uncertain usage, overage resolution, and retention. Backend review must agree on profile/account identity mapping and server-only reservation/settlement/refund function signatures. The settlement path must use profile-then-accounting-request lock order and make hold closure, debit insertion, state transition, and projection refresh one transaction; a terminal retry must return the stored result rather than create another debit.
+Founder approval remains required for wallet denomination, pricing, rounding, cached-token treatment, safety margin, uncertain usage, overage resolution, and retention. Backend review must agree on service-only reservation/settlement/refund functions and guarantee the profile-then-accounting-request lock order for every wallet mutation. The correction migration assumes PostgreSQL 15+ for `security_invoker` views and an authorized Supabase `service_role`.
 
 ## Next step
 
-Commit this focused correction, push it to `feat/database-foundation`, and update PR #8. Do not deploy or merge until founder, backend, security, and disposable PostgreSQL verification gates are complete.
+Commit this focused correction, push it to `feat/database-foundation`, and update PR #8. Run the migration, rollback, SQL suite, and separate-session concurrency/RLS tests only in a disposable PostgreSQL/Supabase environment. Do not deploy or merge until those gates and security review are complete.
