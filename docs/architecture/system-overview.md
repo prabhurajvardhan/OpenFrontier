@@ -1,50 +1,67 @@
 # System overview
 
-**Status: Proposed.** No application code or technology stack exists in the repository as of the initial RKS commit.
+**Status: Proposed; founder approval required.** This document is the integrated technical design for Assignment 002. No application implementation, provider integration, migration, or credential exists yet.
 
-## Product boundary
+## Recommended initial topology
 
-Open Frontier is intended to provide a global AI chat experience. The future system will need to coordinate:
+The simplest viable launch is one Next.js App Router application with strict TypeScript, deployed as one Vercel service. The application uses the Vercel AI SDK for streaming and model interaction, an internal gateway adapter for the selected inference gateway, and Supabase PostgreSQL as the sole durable system of record. Supabase server-side pooling is required for serverless traffic. Upstash Redis is deferred until measured requirements justify it for rate limiting, idempotency, caching, or ephemeral coordination.
 
-1. a client experience for conversations and account/token visibility;
-2. an application/API boundary for authenticated requests;
-3. model-provider integrations for inference;
-4. server-authoritative token accounting and settlement;
-5. rewarded-ad verification and reward issuance;
-6. abuse prevention, rate limiting, and safety controls; and
-7. operational observability and support workflows.
+The recommended inference gateway is OpenRouter, subject to founder approval, because its reviewed documentation explicitly describes a broad multi-provider catalog and routing controls. Vercel AI Gateway remains the documented alternative where Vercel-native observability, budgets, BYOK, deployment integration, or zero token markup outweigh OpenRouter's credit-purchase fee. The application must not expose either gateway credential to the browser.
 
-These are capability boundaries, not commitments to services, languages, vendors, deployment topology, or storage technologies.
+## Component boundaries
 
-## High-level flow
+| Component | Responsibility | Launch status |
+| --- | --- | --- |
+| Web client | Conversation UI, streaming display, ad UX, authenticated navigation, safe `/out` links | Proposed |
+| Next.js application/API | Authenticated request boundary, validation, orchestration, policy enforcement, streaming response | Proposed |
+| Session/auth module | Guest sessions, Google OIDC verification, application-owned sessions, revocation | Proposed |
+| Conversation service | Conversation/message lifecycle, context selection, retention/deletion policy | Proposed |
+| Inference adapter | Normalizes gateway requests, model IDs, provider options, streaming, usage, errors, retries | Proposed |
+| Token-accounting module | Reservations, immutable ledger entries, settlement, refunds, reconciliation | Proposed |
+| Reward service | Ad-show creation, callback verification, fraud checks, reward decision, ledger credit | Proposed |
+| Affiliate service | Link detection, allowlist validation, provider lookup/wrapping, disclosure, redirect analytics | Proposed |
+| Payment service | Hosted checkout/order creation, webhook verification, top-up ledger, refunds/reconciliation | Proposed |
+| PostgreSQL | Durable source of truth for identity, conversations, usage, ledger, rewards, payments, rules, audit | Proposed |
+| Redis (later) | Bounded ephemeral coordination only; never authoritative balance or ledger | Deferred |
+| Operations/admin | Reconciliation, budgets, alerts, abuse review, provider configuration, support actions | Proposed |
 
-```text
-User client
-   | authenticated request
-   v
-Application/API boundary
-   |-- conversation and policy checks
-   |-- token availability/reservation
-   |-- model-provider request
-   |-- usage settlement
-   |-- audit/observability events
-   |
-   |<-- verified rewarded-ad event -- advertising integration
-   |
-   +--> server-authoritative account/token records
+## System context
+
+```mermaid
+flowchart LR
+  U[User browser] --> W[Next.js web client]
+  W --> A[Next.js application/API]
+  A --> S[Session and policy module]
+  A --> C[Conversation service]
+  A --> T[Token accounting]
+  A --> I[Inference adapter]
+  I --> G[Selected AI gateway]
+  G --> P[Model providers]
+  A --> D[(Supabase PostgreSQL)]
+  A -. later .-> R[(Upstash Redis)]
+  A --> AD[Reward service]
+  AD <-- verified callback --> N[Ad network]
+  A --> AF[Affiliate service]
+  AF --> X[Affiliate provider]
+  A --> PAY[Payment service]
+  PAY <-- webhook --> PP[Payment provider]
+  A --> O[Audit, metrics, alerts]
 ```
 
-The exact transaction boundaries, retry behavior, idempotency keys, and consistency model are **awaiting founder/technical approval** and must be recorded in ADRs before implementation.
+## Trust boundaries
 
-## Explicit non-decisions
+The browser is untrusted. It may request an operation and display a stream, but it cannot set identity, balance, reward status, usage, provider cost, or payment success. The application/API is the policy boundary. Third-party callbacks are untrusted until signature or documented verification, replay, timestamp, account, and event checks succeed. PostgreSQL is the durable accounting boundary. Provider credentials and signing secrets are server-only.
 
-The repository does not yet select a frontend framework, backend language, database, hosting provider, model vendors, ad network, authentication provider, queue, cache, analytics platform, or deployment model. Agents must not treat examples in this document as selected technologies.
+## Launch versus later
 
-## Open questions
+Required for launch are the single application, PostgreSQL, server-owned sessions, Google OIDC if durable accounts are enabled, one selected inference gateway behind an adapter, immutable token accounting, a verified rewarded-ad path if rewards launch, concrete abuse controls, safe affiliate redirects if `/out` launches, and operational audit/reconciliation.
 
-- Which geographies, age requirements, and regulatory obligations are in scope for launch?
-- What is the identity and account-recovery model?
-- Which models and providers are eligible, and how are model costs represented in token units?
-- How are token grants, reservations, debits, expirations, refunds, and corrections modeled?
-- What ad events are trusted, and how is duplicate/fraudulent reward issuance prevented?
-- What are the launch SLOs, retention requirements, and support/admin controls?
+Useful later are Redis for distributed coordination, a durable workflow system for long-running jobs, additional gateway/provider adapters, read replicas, search/vector retrieval, multi-region data, and multiple payment/ad networks. Unnecessary at the current scale are a separate custom backend alongside Next.js, Redis as a second source of truth, a microservice fleet, and active-active multi-region infrastructure without measured requirements.
+
+## Major open assumptions
+
+Workload, model catalog, latency SLO, retention, data residency, provider terms, launch geography, legal obligations, ad eligibility, payout evidence, payment economics, and support ownership are unknown. These are recorded in [`../decisions/founder-decisions.md`](../decisions/founder-decisions.md), not silently assumed.
+
+## Evidence
+
+The gateway and stack recommendation is based on the reviewed official documentation for Vercel AI Gateway, OpenRouter, Vercel AI SDK, Next.js, Supabase, and Upstash. See the References section in [`../decisions/ADR-0002-launch-technology.md`](../decisions/ADR-0002-launch-technology.md).

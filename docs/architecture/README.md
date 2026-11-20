@@ -5,6 +5,7 @@ This directory describes system boundaries, components, integrations, and data f
 ## Documents
 
 - [`system-overview.md`](system-overview.md) — current proposed boundaries and unresolved choices.
+- [`data-flows.md`](data-flows.md) — proposed chat, reward, affiliate, and payment flows.
 - [`component-template.md`](component-template.md) — template for adding a component without implying implementation.
 
 ## Update rules

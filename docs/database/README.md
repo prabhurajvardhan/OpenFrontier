@@ -14,3 +14,4 @@ The eventual data model must support server-authoritative identity, conversation
 - Monetary or inference-token quantities use explicit units and precision.
 
 See [`data-model.md`](data-model.md) for the conceptual entities and open questions.
+See [`token-accounting.md`](token-accounting.md) for reservations, settlement, immutable ledger rules, and conceptual SQL.

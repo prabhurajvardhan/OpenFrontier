@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-20
 - **Agent:** Tech Lead
-- **Task:** [TASK-001](../tasks/active/TASK-001-rks-foundation.md)
+- **Task:** [TASK-001](../tasks/completed/TASK-001-rks-foundation.md)
 - **Status:** Completed
 
 ## Completed work

@@ -1,21 +1,63 @@
-# Conceptual data model
+# Conceptual and proposed physical data model
 
-**Status: Proposed; not implemented.** The entities below are conceptual requirements, not a finalized schema.
+**Status: Proposed; not implemented.** The tables below are a design starting point, not migrations. The final schema, identifiers, retention, and tenancy model require founder/security approval.
 
-| Entity | Purpose | Key questions |
-| --- | --- | --- |
-| Account | User identity and lifecycle | What identity provider, recovery, deletion, and region rules apply? |
-| Conversation / Message | Chat history and metadata | What retention, export, deletion, and privacy guarantees apply? |
-| Model / Provider | Eligible inference offerings | How are availability, cost, routing, and vendor terms represented? |
-| Token ledger entry | Immutable grant, reservation, debit, refund, or correction | What unit, precision, ordering, and reconciliation rules apply? |
-| Reward event | Verified ad completion and reward decision | Which provider callbacks/signatures and fraud signals are trusted? |
-| Usage record | Provider usage and billing evidence | When is usage final, and how are unknown/estimated amounts handled? |
-| Audit event | Security and administrative trace | Retention, access, redaction, and export requirements? |
+## Entities
 
-## Recommended conceptual relationship
+`accounts` represents a durable user keyed by an internal ID and a stable identity subject such as Google OIDC `sub`. `guest_sessions` represents a short-lived low-privilege session. `sessions` stores application-owned session state and revocation metadata. `conversations` and `messages` store owned chat data with retention and deletion markers.
 
-`Account` owns conversations and a token ledger. A `Reward event` may produce one or more ledger entries only after verification and idempotency checks. A model request creates a usage record and a corresponding ledger debit/reservation according to an approved transaction policy. The exact cardinalities and constraints remain open.
+`models` and `model_price_versions` describe approved model IDs, gateway namespaces, input/output prices, effective dates, capability limits, and status. `inference_requests` records idempotency key, account/session, model-price version, reservation, provider request ID, terminal state, usage, and reconciliation status.
 
-## Not yet decided
+`account_balances` is a guarded read projection. `token_ledger` is immutable and records reservations, debits, releases, rewards, top-ups, refunds, and corrections. `accounting_requests` provides idempotency and state transitions.
 
-No table names, IDs, indexes, migrations, ORM, database engine, consistency level, or sharding strategy are selected. Record those choices in ADRs before implementation.
+`ad_shows`, `ad_callbacks`, `reward_policies`, and `reward_reconciliation` track show nonce, session/account, network, callback identity, verification state, policy version, estimated revenue if available, granted amount, and reconciliation outcome. `payment_intents`, `payment_events`, and `payment_reconciliation` track hosted payment state and compensating ledger entries.
+
+`affiliate_rules`, `affiliate_clicks`, and `affiliate_provider_events` store versioned destination rules, disclosure policy, non-sensitive click IDs, provider references, and reporting outcomes. `audit_events` stores actor, action, resource, request ID, redacted metadata, and retention class. `abuse_signals` stores privacy-reviewed, short-retention risk signals and decisions, not raw fingerprints by default.
+
+## Critical constraints
+
+- Unique stable identity subject per identity provider.
+- Unique session token hash; raw session tokens never stored.
+- Unique `(account_id, idempotency_key)` for balance-affecting requests.
+- Unique provider event IDs per network/provider.
+- Unique `(request_id, entry_type)` for single-instance ledger entries.
+- Check constraints for non-negative quantities, supported statuses, and valid state transitions.
+- Foreign keys from ledger entries to account and source request/intent.
+- Effective-date uniqueness for active model pricing and reward policy versions.
+- No client-writable balance or ledger table.
+
+## Indexing and retention
+
+Index owner/account plus conversation update time, request idempotency, request status and created time, ledger account plus sequence/time, callback provider ID, payment provider ID, affiliate destination hash/rule version, and audit actor/resource/time. Partitioning is unnecessary until measured volume requires it. Retain conversation content, audit events, usage, and abuse signals according to approved privacy classes; deletion must preserve the minimum financial/accounting evidence required by law and reconciliation.
+
+## Row-level security requirements
+
+Enable RLS for user-owned conversations, messages, sessions, and account views. Policies must derive ownership from the authenticated application identity, not a client-supplied account ID. Keep service-role operations server-only and narrowly scoped. Ledger, balances, provider configurations, pricing, reward verification, payment events, audit records, and abuse signals are not directly writable by ordinary client roles. Administrative access requires explicit role, audit logging, least privilege, and support redaction.
+
+## ER diagram
+
+```mermaid
+erDiagram
+  ACCOUNT ||--o{ SESSION : has
+  ACCOUNT ||--o{ GUEST_SESSION : may_link
+  ACCOUNT ||--o{ CONVERSATION : owns
+  CONVERSATION ||--o{ MESSAGE : contains
+  ACCOUNT ||--|| ACCOUNT_BALANCE : projects
+  ACCOUNT ||--o{ TOKEN_LEDGER : receives
+  ACCOUNT ||--o{ INFERENCE_REQUEST : submits
+  INFERENCE_REQUEST ||--o{ TOKEN_LEDGER : causes
+  MODEL ||--o{ MODEL_PRICE_VERSION : priced_by
+  MODEL_PRICE_VERSION ||--o{ INFERENCE_REQUEST : selected_for
+  ACCOUNT ||--o{ AD_SHOW : starts
+  AD_SHOW ||--o{ AD_CALLBACK : receives
+  AD_SHOW ||--o{ TOKEN_LEDGER : may_credit
+  ACCOUNT ||--o{ PAYMENT_INTENT : owns
+  PAYMENT_INTENT ||--o{ PAYMENT_EVENT : receives
+  PAYMENT_INTENT ||--o{ TOKEN_LEDGER : may_credit
+  AFFILIATE_RULE ||--o{ AFFILIATE_CLICK : matches
+  ACCOUNT ||--o{ AUDIT_EVENT : acts
+```
+
+## Critical SQL posture
+
+The accounting transactions and guarded updates are specified in [`token-accounting.md`](token-accounting.md). No SQL in this repository is an executable migration until the founder-approved schema and security review are complete.
