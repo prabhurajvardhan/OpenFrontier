@@ -60,6 +60,7 @@ Detailed steps and redirect values are in [`../../docs/security/google-oauth-set
 ## Git handoff
 
 - Local implementation branch: `task/001-google-oauth`
-- Commit: pending safe staging and commit
-- Remote push: pending; do not report as complete until remote branch and SHA are confirmed.
+- Implementation commit: `47cbd152745005277d98a8df35750b998011c9d0` (`feat(auth): implement Supabase Google OAuth`).
+- Remote push: confirmed to `origin/task/001-google-oauth`; `git ls-remote` matched the implementation commit SHA before this record update. A follow-on documentation commit will update this handover and task record; its final remote SHA is reported separately after verification.
+- Pull request: not created.
 - Merge/deployment: not performed and not authorized.
