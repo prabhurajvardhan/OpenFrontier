@@ -1,5 +1,20 @@
 import { NextResponse } from "next/server";
 import { createDevelopmentSession, resolveSession, safeError } from "@/lib/server/services";
+import { resolveVerifiedSession } from "@/lib/server/auth-session";
+import { createSupabaseServerClient, hasSupabasePublicConfig } from "@/lib/supabase/server";
+
+export async function GET() {
+  if (!hasSupabasePublicConfig()) {
+    return NextResponse.json({ error: "auth_not_configured" }, { status: 503, headers: { "Cache-Control": "no-store" } });
+  }
+  try {
+    const supabase = await createSupabaseServerClient();
+    const result = await resolveVerifiedSession(() => supabase.auth.getUser());
+    return NextResponse.json(result.body, { status: result.status, headers: { "Cache-Control": "no-store" } });
+  } catch {
+    return NextResponse.json({ error: "auth_unavailable" }, { status: 503, headers: { "Cache-Control": "no-store" } });
+  }
+}
 
 export async function POST(request: Request) {
   if (process.env.NODE_ENV === "production") {

@@ -1,10 +1,10 @@
 # Security controls
 
-**Status: Proposed baseline; security and founder approval required.** No controls are implemented yet. This page defines the minimum design posture before application development.
+**Status: Proposed baseline; security and founder approval required.** This page defines the minimum design posture before production approval. TASK-001 has implemented a limited Google OAuth path through Supabase Auth with PKCE callback exchange, verified `getUser()` session reads, and an internal redirect allowlist. That scoped implementation does not accept this proposed baseline wholesale or constitute a production security review.
 
 ## Identity and sessions
 
-Use two access tiers. Guests receive a short-lived, server-generated session with low-cost, non-sensitive capabilities and no unrestricted durable state. Durable accounts use Google OpenID Connect. Validate state and nonce, verify ID-token signature, issuer, audience, and expiry locally using cached Google keys, and use the stable Google `sub` as the identity key. Do not use email as the primary identity key. If Workspace restriction is required, enforce the validated `hd` claim.
+Use two access tiers. Guests receive a short-lived, server-generated session with low-cost, non-sensitive capabilities and no unrestricted durable state. Durable accounts use Google OpenID Connect. Validate state and nonce, verify ID-token signature, issuer, audience, and expiry locally using cached Google keys, and use the stable Google `sub` as the identity key. Do not use email as the primary identity key. If Workspace restriction is required, enforce the validated `hd` claim. The TASK-001 app flow delegates OAuth validation and session issuance to Supabase Auth; the Supabase project and actual provider configuration still require owner setup and live verification.
 
 After login, issue an application-owned session with a hashed token, Secure, HttpOnly, SameSite cookie, preferably `__Host-` scoped, idle and absolute expiry, rotation on privilege change, and server-side revocation. Never treat browser fingerprints as authentication.
 
