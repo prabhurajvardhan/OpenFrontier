@@ -1,6 +1,6 @@
 # TASK-001-CORRECTION — Nanoware Firebase identity
 
-**Status: PARTIALLY_COMPLETED.** The application auth path is corrected to use Nanoware's existing Firebase Authentication as its sole identity authority while retaining Open Frontier's Supabase client/database. Firebase UID (`sub`) is the canonical identity. The code, task record, and handover are ready for the requested branch commit/push; no implementation commit or push has yet been made. Work is in `/home/ubuntu/OpenFrontier-task001` on `task/001-google-oauth`, which began at `b886fc42ddcff0917640aefb3ce42978b7d9b09c`, matching the remote branch.
+**Status: PARTIALLY_COMPLETED.** The application auth path is corrected to use Nanoware's existing Firebase Authentication as its sole identity authority while retaining Open Frontier's Supabase client/database. Firebase UID (`sub`) is the canonical identity. The implementation was committed and pushed to `origin/task/001-google-oauth` as `963204a6807c833643837fa753205b8372e609e4`; the remote SHA was verified to match. The task/handover status update is a follow-on documentation commit on the same branch. Work is isolated in `/home/ubuntu/OpenFrontier-task001` on `task/001-google-oauth`.
 
 ## Implemented in this correction
 
@@ -10,7 +10,7 @@
 - Added setup/security guidance in `docs/security/nanoware-firebase-auth.md`, refreshed related setup/API/security docs, and added generated-key unit tests for token validation and UID ownership.
 - Replaced Firebase umbrella/Admin dependencies with the Web App/Auth modules and `jose`; no private credentials are included.
 
-## Verification completed on the final implementation tree
+## Verification completed on the implementation tree
 
 - `npm test` — passed, 9 tests.
 - `npm run lint` — passed.
@@ -36,4 +36,4 @@ Automatic profile/wallet provisioning is **not implemented**. The repository des
 5. Provide the actual profile/wallet schema and a safe non-production test environment before profile provisioning is implemented.
 6. Run live non-production tests for sign-in/cancel, restoration, refresh, logout, claim rejection, cross-user isolation, and RLS; report these separately from unit tests.
 
-Commit and push only this worktree to `origin/task/001-google-oauth`. Do not merge or deploy. Keep the unrelated dirty `/home/ubuntu/OpenFrontier` TASK-004 checkout untouched.
+The branch was pushed without merging or deploying. The unrelated dirty `/home/ubuntu/OpenFrontier` TASK-004 checkout was not touched.

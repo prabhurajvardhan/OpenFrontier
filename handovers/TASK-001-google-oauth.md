@@ -1,6 +1,6 @@
 # Handover — TASK-001-CORRECTION
 
-As of 2026-11-23, the correction is **PARTIALLY_COMPLETED**. The local implementation and documentation are ready for the requested branch commit/push. Work is isolated in `/home/ubuntu/OpenFrontier-task001` on `task/001-google-oauth`; it began at `b886fc42ddcff0917640aefb3ce42978b7d9b09c`, matching `origin/task/001-google-oauth`. The separate `/home/ubuntu/OpenFrontier` checkout is on a dirty TASK-004 branch; do not stage, commit, or push from it.
+As of 2026-11-23, the correction is **PARTIALLY_COMPLETED**. The implementation commit `963204a6807c833643837fa753205b8372e609e4` (`fix(auth): use Nanoware Firebase identity`) was pushed to `origin/task/001-google-oauth`; `git ls-remote` confirmed the remote SHA matched. The active task and this handover are included in a subsequent documentation-only commit on the same branch. No merge or deployment was performed. Work is isolated in `/home/ubuntu/OpenFrontier-task001` on `task/001-google-oauth`. The separate `/home/ubuntu/OpenFrontier` checkout is on a dirty TASK-004 branch; it was not staged or modified.
 
 ## Correction scope
 
@@ -10,7 +10,7 @@ Key implementation files include `lib/firebase/client.ts`, `components/nanoware-
 
 ## Verification completed
 
-Final-tree checks passed: `npm test` (9 tests), `npm run lint`, `npm run typecheck`, `NEXT_TELEMETRY_DISABLED=1 npm run build`, `npm audit` (zero vulnerabilities), and `git diff --check`. The unit tests use generated local RSA keys and mocks; these results do not establish live Firebase authentication, Supabase registration, database persistence, or RLS behavior.
+Final implementation-tree checks passed: `npm test` (9 tests), `npm run lint`, `npm run typecheck`, `NEXT_TELEMETRY_DISABLED=1 npm run build`, `npm audit` (zero vulnerabilities), and `git diff --check`. The unit tests use generated local RSA keys and mocks; these results do not establish live Firebase authentication, Supabase registration, database persistence, or RLS behavior.
 
 ## Blockers
 
@@ -18,6 +18,6 @@ The exact existing Nanoware Firebase Project ID and Web App values are unavailab
 
 The owner needs to supply the exact existing Firebase Project ID/Web App configuration, confirm the existing Google provider and authorized domains, ensure the `role: "authenticated"` custom claim is safely assigned while preserving other claims, register that Firebase project in the existing Supabase Third-Party Auth settings, provide Preview/local configuration, and provide real schema plus safe test access. Then run live tests separately from unit tests. The precise instructions and official references are in `docs/security/nanoware-firebase-auth.md`.
 
-## Git instructions
+## Branch state
 
-The correction and these status records are local and not yet committed or pushed. Restore the build-generated `next-env.d.ts` modification before staging; it was restored before the final verification but the production build can rewrite it. Stage only `/home/ubuntu/OpenFrontier-task001`, commit, push to `origin/task/001-google-oauth`, and verify the remote branch SHA. Do not merge or deploy. If GitHub credentials or push permissions fail, preserve the exact error and do not claim success.
+The implementation commit is pushed. The task and handover status updates are in the follow-on documentation commit on the same branch. The build-generated `next-env.d.ts` change was restored and is not part of the implementation commit. Do not merge or deploy.
