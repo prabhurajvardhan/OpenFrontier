@@ -1,12 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { BackendStore, ChatOperation, ChatRequest, Conversation, InferenceAdapter, Message, Session } from "./contracts";
+import type { BackendStore, ChatOperation, ChatRequest, Conversation, InferenceAdapter, Message } from "./contracts";
 
-const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const MAX_MESSAGE_LENGTH = 12_000;
 const ALLOWED_MODELS = new Set(["frontier-balanced", "frontier-fast"]);
 
 export const store: BackendStore = {
-  sessions: new Map(),
   conversations: new Map(),
   messages: new Map(),
   chatOperations: new Map(),
@@ -20,32 +18,6 @@ export function setInferenceAdapterForTests(adapter: InferenceAdapter | null): v
 
 export function requestId(): string {
   return `req_${randomUUID()}`;
-}
-
-export function parseBearer(request: Request): string | null {
-  const value = request.headers.get("authorization");
-  if (!value?.startsWith("Bearer ")) return null;
-  return value.slice("Bearer ".length).trim() || null;
-}
-
-export function createDevelopmentSession(userId: string): Session {
-  const now = Date.now();
-  const session: Session = {
-    id: `dev_${randomUUID()}`,
-    userId,
-    createdAt: new Date(now).toISOString(),
-    expiresAt: new Date(now + SESSION_TTL_MS).toISOString(),
-  };
-  store.sessions.set(session.id, session);
-  return session;
-}
-
-export function resolveSession(request: Request): Session | null {
-  const token = parseBearer(request) ?? request.headers.get("x-dev-session");
-  if (!token) return null;
-  const session = store.sessions.get(token);
-  if (!session || Date.parse(session.expiresAt) <= Date.now()) return null;
-  return session;
 }
 
 export function validateChatRequest(value: unknown): ChatRequest {
@@ -123,7 +95,7 @@ export function listUserConversations(userId: string): Conversation[] {
 
 export function safeError(code: string): { code: string; message: string } {
   const messages: Record<string, string> = {
-    unauthenticated: "A development session is required.",
+    unauthenticated: "A verified Firebase authentication token is required.",
     invalid_request: "The request could not be validated.",
     not_found: "The requested resource was not found.",
     provider_unavailable: "The inference provider is unavailable.",

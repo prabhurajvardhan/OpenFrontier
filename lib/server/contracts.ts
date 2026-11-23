@@ -8,13 +8,6 @@ export type SafeErrorCode =
   | "in_progress"
   | "request_failed";
 
-export interface Session {
-  id: string;
-  userId: string;
-  createdAt: string;
-  expiresAt: string;
-}
-
 export interface Conversation {
   id: string;
   userId: string;
@@ -62,7 +55,6 @@ export interface InferenceAdapter {
 }
 
 export interface BackendStore {
-  sessions: Map<string, Session>;
   conversations: Map<string, Conversation>;
   messages: Map<string, Message[]>;
   chatOperations: Map<string, ChatOperation>;

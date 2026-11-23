@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server";
-import { appendMessage, developmentAdapter, getOrCreateConversation, markChatCompleted, markChatFailed, reserveChatOperation, resolveSession, safeError, store, validateChatRequest } from "@/lib/server/services";
+import { resolveRequestIdentity } from "@/lib/server/auth-session";
+import { appendMessage, developmentAdapter, getOrCreateConversation, markChatCompleted, markChatFailed, reserveChatOperation, safeError, store, validateChatRequest } from "@/lib/server/services";
 
 function event(payload: unknown): string {
   return `data: ${JSON.stringify(payload)}\n\n`;
 }
 
 export async function POST(request: Request) {
-  const session = resolveSession(request);
-  if (!session) return NextResponse.json({ error: safeError("unauthenticated") }, { status: 401 });
+  const auth = await resolveRequestIdentity(request);
+  if (!auth.identity) {
+    const status = auth.error === "unauthenticated" ? 401 : 503;
+    const message = auth.error === "auth_not_configured" ? "Firebase authentication is not configured." : auth.error === "auth_unavailable" ? "Authentication is temporarily unavailable." : "A verified Firebase authentication token is required.";
+    return NextResponse.json({ error: { code: auth.error, message } }, { status, headers: { "Cache-Control": "no-store" } });
+  }
+  const session = { userId: auth.identity.uid };
   let input;
   try {
     input = validateChatRequest(await request.json());

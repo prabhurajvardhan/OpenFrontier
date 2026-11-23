@@ -283,6 +283,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .text-field[readonly] { color: var(--muted); background: #faf9f6; }
 .auth-submit { width: 100%; min-height: 44px; border-radius: 11px; }
 .auth-form .auth-submit { margin-top: 3px; }
+.nanoware-account-state { display: grid; gap: 10px; }
+.auth-account-email { margin: -2px 0 4px; overflow-wrap: anywhere; color: var(--muted); font-size: 11px; }
 .auth-divider { display: flex; align-items: center; gap: 10px; margin: 20px 0 14px; color: var(--muted-light); font-size: 10px; }
 .auth-divider::before, .auth-divider::after { height: 1px; flex: 1; background: var(--line); content: ''; }
 .google-g { font-family: Arial, sans-serif; font-size: 15px; font-weight: 700; }

@@ -1,12 +1,12 @@
 # Backend development contract
 
-**Status: Implemented for development only; not a production contract.** This contract is compatible with the corrected terminal-event proposal below. It uses a server-owned in-memory store because no database-agent schema or migration is available on this branch. Production persistence, accounting, and identity remain Proposed.
+**Status: Implemented for development only; not a production contract.** This contract is compatible with the corrected terminal-event proposal below. It uses a server-owned in-memory store because no database schema or migration is available on this branch. Firebase ID-token authentication is implemented but requires owner configuration and is not live-verified; Supabase persistence and profile provisioning remain unimplemented.
 
 ## Authentication
 
-### `POST /api/auth/session`
+### `GET /api/auth/session`
 
-Development only. In non-production mode, accepts `{ "userId": "dev-user" }` and returns a short-lived development session. The returned `session.id` must be sent as `Authorization: Bearer <session.id>` or `x-dev-session`. Production returns `403`.
+Accepts an `Authorization: Bearer <Firebase ID token>` header, verifies the token against the configured Nanoware Firebase project and requires `role: "authenticated"`. Returns the verified Firebase UID as `user.id`. The request body is not accepted as an identity source; missing or invalid tokens return `authenticated: false`. Firebase and Supabase values are documented in [`../security/nanoware-firebase-auth.md`](../security/nanoware-firebase-auth.md).
 
 ## Health
 
@@ -18,21 +18,21 @@ Returns the actual runtime environment: `{ "status": "ok", "environment": "devel
 
 ### `GET /api/conversations`
 
-Requires a development session. Returns user-owned conversations only.
+Requires a valid Firebase bearer token with the authenticated role. Returns conversations scoped to the verified Firebase UID in the development-only in-memory store.
 
 ### `POST /api/conversations`
 
-Requires a development session. Request: `{ "title"?: string }`. The server creates the conversation and returns `{ "conversation": Conversation }`.
+Requires a valid Firebase bearer token with the authenticated role. Request: `{ "title"?: string }`. The server creates a conversation scoped to the verified Firebase UID and returns `{ "conversation": Conversation }`.
 
 ### `GET /api/conversations/:conversationId/messages`
 
-Requires a development session and ownership. Returns `{ "messages": Message[] }`.
+Requires a valid Firebase bearer token with the authenticated role and matching Firebase UID ownership. Returns `{ "messages": Message[] }`.
 
 ## Streaming chat
 
 ### `POST /api/chat`
 
-Requires a development session. Request:
+Requires a valid Firebase bearer token with the authenticated role. Ownership and idempotency use the verified Firebase UID; request-body IDs, emails, roles, and wallet ownership are not trusted. Request:
 
 ```json
 {
@@ -71,4 +71,4 @@ The existing frontend branch defines the older terminal shape with required `inp
 
 ## Explicitly not implemented
 
-Supabase persistence, Google OIDC, application cookies, wallet reservation/settlement, provider billing, payments, rewarded ads, rate limiting, and production deployment are not implemented by this development slice. No database migration was created or modified.
+Supabase persistence, automatic profile/wallet provisioning, wallet reservation/settlement, provider billing, payments, rewarded ads, rate limiting, and production deployment are not implemented by this development slice. No database migration was created or modified. Profile provisioning is blocked until the owner provides the actual schema and safe test access; do not infer tables from the proposed model.
