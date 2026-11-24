@@ -15,12 +15,15 @@ create type public.accounting_request_status as enum
   ('created', 'reserved', 'provider_running', 'settled', 'released', 'pending_reconciliation');
 
 create table public.profiles (
-  id uuid primary key references auth.users(id) on delete restrict,
+  -- Internal relational key only. Firebase UID is the canonical auth identity.
+  id uuid primary key default gen_random_uuid(),
+  firebase_uid text not null unique,
   display_name text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   deleted_at timestamptz,
-  constraint profiles_display_name_length check (display_name is null or char_length(display_name) <= 120)
+  constraint profiles_display_name_length check (display_name is null or char_length(display_name) <= 120),
+  constraint profiles_firebase_uid_length check (char_length(firebase_uid) between 1 and 128)
 );
 
 create table public.user_preferences (
@@ -66,12 +69,11 @@ create table public.model_price_versions (
   id uuid primary key default gen_random_uuid(),
   model_id uuid not null references public.model_catalogue(id) on delete restrict,
   version integer not null,
-  input_units_per_million bigint not null check (input_units_per_million >= 0),
-  cached_input_units_per_million bigint not null check (cached_input_units_per_million >= 0),
-  cache_write_units_per_million bigint not null check (cache_write_units_per_million >= 0),
-  output_units_per_million bigint not null check (output_units_per_million >= 0),
-  wallet_unit text not null,
-  rounding_version text not null,
+  provider_uncached_input_cost_per_million numeric(30,12) not null check (provider_uncached_input_cost_per_million >= 0),
+  provider_cached_input_cost_per_million numeric(30,12) not null check (provider_cached_input_cost_per_million >= 0),
+  provider_cache_write_cost_per_million numeric(30,12) not null check (provider_cache_write_cost_per_million >= 0),
+  provider_output_cost_per_million numeric(30,12) not null check (provider_output_cost_per_million >= 0),
+  provider_cost_currency text not null check (char_length(provider_cost_currency) between 1 and 12),
   effective_from timestamptz not null,
   effective_to timestamptz,
   source text not null,
@@ -114,6 +116,7 @@ create table public.inference_requests (
   status public.inference_request_status not null default 'created',
   provider_request_id text,
   provider_status text,
+  -- input_tokens is total input; cached/cache-write counts are disjoint subsets.
   input_tokens bigint not null default 0 check (input_tokens >= 0),
   cached_input_tokens bigint not null default 0 check (cached_input_tokens >= 0),
   cache_write_tokens bigint not null default 0 check (cache_write_tokens >= 0),
@@ -124,7 +127,11 @@ create table public.inference_requests (
     check (reconciliation_status in ('not_required', 'pending', 'resolved')),
   created_at timestamptz not null default now(),
   settled_at timestamptz,
-  unique (provider_request_id)
+  unique (provider_request_id),
+  constraint inference_usage_dimensions_consistent check (
+    cached_input_tokens <= input_tokens
+    and cache_write_tokens <= input_tokens - cached_input_tokens
+  )
 );
 
 create table public.reservation_holds (
@@ -179,10 +186,23 @@ create table public.provider_usage_records (
   cached_input_tokens bigint not null default 0 check (cached_input_tokens >= 0),
   cache_write_tokens bigint not null default 0 check (cache_write_tokens >= 0),
   output_tokens bigint not null default 0 check (output_tokens >= 0),
-  reported_units bigint check (reported_units is null or reported_units >= 0),
+  reported_provider_cost numeric(30,12) check (reported_provider_cost is null or reported_provider_cost >= 0),
+  reported_provider_cost_currency text,
+  estimated_provider_cost numeric(30,12) not null check (estimated_provider_cost >= 0),
+  estimated_cost_currency text not null,
   raw_metadata jsonb not null default '{}'::jsonb,
   received_at timestamptz not null default now(),
-  unique (inference_request_id, provider_request_id)
+  unique (inference_request_id, provider_request_id),
+  constraint provider_usage_dimensions_consistent check (
+    cached_input_tokens <= input_tokens
+    and cache_write_tokens <= input_tokens - cached_input_tokens
+  ),
+  constraint provider_usage_reported_cost_currency check (
+    (reported_provider_cost is null and reported_provider_cost_currency is null)
+    or (reported_provider_cost is not null and reported_provider_cost_currency is not null
+      and char_length(reported_provider_cost_currency) between 1 and 12)
+  ),
+  constraint provider_usage_estimated_cost_currency check (char_length(estimated_cost_currency) between 1 and 12)
 );
 
 create table public.overage_reconciliations (
@@ -204,6 +224,59 @@ create index inference_requests_profile_status_idx on public.inference_requests 
 create index accounting_requests_profile_status_idx on public.accounting_requests (profile_id, status, created_at desc);
 create index reservation_holds_active_expiry_idx on public.reservation_holds (profile_id, status, expires_at) where status = 'active';
 create index token_ledger_profile_created_idx on public.token_ledger (profile_id, created_at desc);
+create index model_price_versions_effective_idx on public.model_price_versions (model_id, effective_from, effective_to);
+
+-- Firebase is the sole identity authority. A profile UUID is only a relational key.
+create or replace function public.current_firebase_uid()
+returns text language sql stable security invoker
+set search_path = pg_catalog, auth, pg_temp as $$
+  select case
+    when auth.jwt() ->> 'iss' = 'https://securetoken.google.com/nanoware-ai'
+     and auth.jwt() ->> 'aud' = 'nanoware-ai'
+     and auth.jwt() ->> 'role' = 'authenticated'
+     and char_length(auth.jwt() ->> 'sub') between 1 and 128
+    then auth.jwt() ->> 'sub'
+    else null
+  end
+$$;
+
+create or replace function public.owns_profile(p_profile_id uuid)
+returns boolean language sql stable security definer
+set search_path = pg_catalog, public, auth, pg_temp as $$
+  select exists (
+    select 1 from public.profiles p
+    where p.id = p_profile_id and p.firebase_uid = public.current_firebase_uid()
+  )
+$$;
+
+revoke all on function public.current_firebase_uid() from public, anon;
+revoke all on function public.owns_profile(uuid) from public, anon;
+grant execute on function public.current_firebase_uid() to authenticated, service_role;
+grant execute on function public.owns_profile(uuid) to authenticated, service_role;
+
+-- Price ranges for one model may not overlap. Locking the model serializes concurrent edits.
+create or replace function public.guard_model_price_no_overlap()
+returns trigger language plpgsql security definer
+set search_path = pg_catalog, public, pg_temp as $$
+begin
+  perform 1 from public.model_catalogue where id = new.model_id for update;
+  if not found then raise exception 'model does not exist'; end if;
+  if exists (
+    select 1 from public.model_price_versions p
+    where p.model_id = new.model_id
+      and p.id is distinct from new.id
+      and (new.effective_to is null or p.effective_from < new.effective_to)
+      and (p.effective_to is null or p.effective_to > new.effective_from)
+  ) then
+    raise exception 'model price effective ranges may not overlap';
+  end if;
+  return new;
+end;
+$$;
+create trigger model_price_versions_no_overlap
+  before insert or update on public.model_price_versions
+  for each row execute function public.guard_model_price_no_overlap();
+revoke all on function public.guard_model_price_no_overlap() from public, anon, authenticated;
 
 -- Keep the projection guarded and immutable to ordinary clients.
 create or replace function public.refresh_wallet_projection(p_profile_id uuid)
@@ -213,7 +286,7 @@ declare
   v_posted bigint;
   v_held bigint;
 begin
-  if auth.role() <> 'service_role' and (auth.uid() is null or p_profile_id <> auth.uid()) then
+  if auth.role() <> 'service_role' and not public.owns_profile(p_profile_id) then
     raise exception 'profile authorization mismatch';
   end if;
   perform 1 from public.profiles where id = p_profile_id for update;
@@ -276,26 +349,54 @@ alter table public.model_price_versions enable row level security;
 alter table public.provider_usage_records enable row level security;
 alter table public.overage_reconciliations enable row level security;
 
-create policy profiles_self_select on public.profiles for select using (id = (select auth.uid()));
-create policy profiles_self_update on public.profiles for update using (id = (select auth.uid())) with check (id = (select auth.uid()));
-create policy preferences_self_all on public.user_preferences for all using (profile_id = (select auth.uid())) with check (profile_id = (select auth.uid()));
-create policy conversations_owner_all on public.conversations for all using (profile_id = (select auth.uid())) with check (profile_id = (select auth.uid()));
-create policy messages_owner_select on public.messages for select using (profile_id = (select auth.uid()));
-create policy messages_owner_insert on public.messages for insert with check (profile_id = (select auth.uid()) and exists (select 1 from public.conversations c where c.id = conversation_id and c.profile_id = (select auth.uid())));
-create policy wallet_self_select on public.wallet_accounts for select using (profile_id = (select auth.uid()));
-create policy ledger_self_select on public.token_ledger for select using (profile_id = (select auth.uid()));
-create policy holds_self_select on public.reservation_holds for select using (profile_id = (select auth.uid()));
-create policy inference_self_select on public.inference_requests for select using (profile_id = (select auth.uid()));
-create policy accounting_self_select on public.accounting_requests for select using (profile_id = (select auth.uid()));
+create policy profiles_self_select on public.profiles for select
+  using (public.owns_profile(id));
+create policy profiles_self_update on public.profiles for update
+  using (public.owns_profile(id)) with check (public.owns_profile(id));
+create policy preferences_self_all on public.user_preferences for all
+  using (public.owns_profile(profile_id)) with check (public.owns_profile(profile_id));
+create policy conversations_owner_all on public.conversations for all
+  using (public.owns_profile(profile_id)) with check (public.owns_profile(profile_id));
+create policy messages_owner_select on public.messages for select
+  using (public.owns_profile(profile_id));
+create policy messages_owner_insert on public.messages for insert
+  with check (role = 'user' and public.owns_profile(profile_id)
+    and exists (select 1 from public.conversations c
+      where c.id = messages.conversation_id and c.profile_id = messages.profile_id));
+create policy wallet_self_select on public.wallet_accounts for select using (public.owns_profile(profile_id));
+create policy ledger_self_select on public.token_ledger for select using (public.owns_profile(profile_id));
+create policy holds_self_select on public.reservation_holds for select using (public.owns_profile(profile_id));
+create policy inference_self_select on public.inference_requests for select using (public.owns_profile(profile_id));
+create policy accounting_self_select on public.accounting_requests for select using (public.owns_profile(profile_id));
 create policy active_model_catalogue_read on public.model_catalogue for select
   using (status = 'active');
 
 -- No INSERT/UPDATE/DELETE policies are intentionally granted on financial tables.
-revoke all on public.model_catalogue, public.model_price_versions, public.provider_usage_records, public.overage_reconciliations from anon, authenticated;
-revoke all on public.wallet_accounts, public.token_ledger, public.reservation_holds, public.accounting_requests from anon, authenticated;
-revoke insert, update, delete on public.inference_requests from anon, authenticated;
+revoke all on public.profiles, public.user_preferences, public.conversations, public.messages,
+  public.model_catalogue, public.model_price_versions, public.wallet_accounts, public.token_ledger,
+  public.accounting_requests, public.inference_requests, public.reservation_holds,
+  public.provider_usage_records, public.overage_reconciliations from anon, authenticated;
+grant select (id, display_name, created_at, updated_at) on public.profiles to authenticated;
+grant update (display_name) on public.profiles to authenticated;
+grant select, insert, update, delete on public.user_preferences, public.conversations to authenticated;
+grant select on public.messages to authenticated;
+grant insert (conversation_id, profile_id, role, content, sequence_no) on public.messages to authenticated;
 grant select on public.model_catalogue to anon, authenticated;
-grant select on public.wallet_accounts, public.token_ledger, public.reservation_holds, public.inference_requests, public.accounting_requests to authenticated;
+grant select (profile_id, posted_units, held_units, available_units, created_at, updated_at)
+  on public.wallet_accounts to authenticated;
+grant select (id, profile_id, accounting_request_id, reserved_units, status, expires_at, created_at, closed_at)
+  on public.reservation_holds to authenticated;
+grant select (id, profile_id, conversation_id, status, input_tokens, cached_input_tokens,
+  cache_write_tokens, output_tokens, actual_units, overage_units, reconciliation_status, created_at, settled_at)
+  on public.inference_requests to authenticated;
+grant select (id, profile_id, kind, status, reserved_units, actual_units, created_at, updated_at)
+  on public.accounting_requests to authenticated;
+grant select (id, entry_type, amount_units, created_at) on public.token_ledger to authenticated;
+
+grant all on public.profiles, public.user_preferences, public.conversations, public.messages,
+  public.model_catalogue, public.model_price_versions, public.wallet_accounts, public.accounting_requests,
+  public.inference_requests, public.reservation_holds, public.token_ledger,
+  public.provider_usage_records, public.overage_reconciliations to service_role;
 
 -- Backend settlement contract: lock profile then accounting request, close the hold,
 -- insert one usage_debit, update accounting state, and refresh the projection in one
