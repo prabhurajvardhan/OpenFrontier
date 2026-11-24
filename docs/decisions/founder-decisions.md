@@ -14,3 +14,18 @@
 10. Approve availability and continuity requirements: backups, restore objectives, multi-region needs, durable background execution, provider outage behavior, and operational ownership.
 
 Until these are resolved, implementation tasks may build only bounded spikes or non-production scaffolding explicitly authorized by the Tech Lead.
+
+## Practical defaults for review
+
+These are recommendations, not approvals. They are intended to make founder review concrete and prevent silent assumptions.
+
+- **Topology:** start with one Next.js/Vercel application and Supabase PostgreSQL; defer Redis, workers, and microservices. This minimizes operational cost, but synchronous runtime and connection limits must be tested.
+- **Inference:** run a gateway bake-off, with OpenRouter as the current candidate because of documented model/provider breadth, while retaining Vercel AI Gateway as the portability and Vercel-observability alternative. The consequence is one active gateway credential and an adapter, not dual production routing.
+- **Wallet:** approve one integer spendable unit backed by priced model usage, with raw uncached input, cached input, cache-write input, and output retained as separate dimensions. The consequence is predictable user estimates and more explicit pricing configuration; it requires a rounding and conversion policy.
+- **Accounting:** use an immutable signed ledger, account-then-request locking, account-scoped idempotency, pending reconciliation holds, and bounded compensating refunds. The consequence is safer correctness at the cost of more explicit states and operational reconciliation.
+- **Access:** allow only constrained guests and require Google OIDC for durable/high-cost capabilities. The consequence is lower friction for exploration but stricter limits and identity gates for expensive features.
+- **Rewards:** use server-verified GAM as the first technical spike, grant nothing from client callbacks, and make unknown payout events pending or conservatively capped. The consequence is lower fraud risk but less immediate reward certainty.
+- **Affiliate:** pilot Skimlinks for web-first speed or Sovrn for server-side control; do not launch `/out` without disclosure, allowlists, and redirect tests. The consequence is a monetization dependency that should remain outside the first MVP unless economics justify it.
+- **Payments:** defer micro-top-ups until free-access economics and accounting are proven; if required, choose Razorpay for India-first or Stripe for global scope after account-specific pricing/compliance review. The consequence is less early scope and fewer reconciliation paths.
+
+Each default remains `Proposed` until the founder records an explicit decision in an ADR. A default is not permission to implement a production feature.
