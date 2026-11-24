@@ -1,39 +1,43 @@
 # TASK-001-CORRECTION — Nanoware Firebase identity
 
-**Status: PARTIALLY_COMPLETED.** The application auth path is corrected to use Nanoware's existing Firebase Authentication as its sole identity authority while retaining Open Frontier's Supabase client/database. Firebase UID (`sub`) is the canonical identity. The implementation was committed and pushed to `origin/task/001-google-oauth` as `963204a6807c833643837fa753205b8372e609e4`; the remote SHA was verified to match. The task/handover status update is a follow-on documentation commit on the same branch. Work is isolated in `/home/ubuntu/OpenFrontier-task001` on `task/001-google-oauth`.
+**Status: PARTIALLY_COMPLETED.** The application auth path is implemented with Nanoware's existing Firebase Authentication as the identity authority and Supabase as database client. Firebase UID (`sub`) is the canonical identity. On 2026-11-24, Firebase third-party auth was registered and confirmed enabled in the existing OpenFrontier Supabase project using the owner's confirmed project ID. No database or wallet changes were made. See [`TASK-001-CORRECTION readiness report`](TASK-001-CORRECTION-readiness.md) for exact findings.
 
-## Implemented in this correction
+## Implemented and verified
 
-- Replaced Supabase-owned Google OAuth and cookie sessions with Firebase Google sign-in, Firebase session restoration/token refresh, logout, mobile redirect and desktop popup flows, cancellation/error handling, and the Nanoware account sign-in copy.
-- Kept Supabase as the database client and configured it to request the current Firebase ID token. Server routes verify Firebase JWT signatures and required claims and use only the verified Firebase UID for identity and ownership. Client-provided IDs, emails, roles, and wallet ownership are not trusted.
-- Removed obsolete Supabase OAuth callback/helpers and the development-session bootstrap that accepted client-provided user IDs.
-- Added setup/security guidance in `docs/security/nanoware-firebase-auth.md`, refreshed related setup/API/security docs, and added generated-key unit tests for token validation and UID ownership.
-- Replaced Firebase umbrella/Admin dependencies with the Web App/Auth modules and `jose`; no private credentials are included.
+- Replaced Supabase-owned Google OAuth and cookie sessions with Firebase Google sign-in, Firebase session restoration/token refresh, logout, mobile redirect and desktop popup flows, cancellation/error handling, and Nanoware account sign-in copy.
+- Kept Supabase as database client and configured it to request the current Firebase ID token. Server routes verify Firebase JWT signatures and required claims and use only verified Firebase UID for identity and ownership. Client-provided IDs, emails, roles, and wallet ownership are not trusted.
+- Removed obsolete Supabase OAuth callback/helpers and development-session bootstrap that accepted client-provided user IDs.
+- Added setup/security guidance and generated-key unit tests for token validation and UID ownership.
+- Replaced Firebase umbrella/Admin dependencies with Web App/Auth modules and `jose`; no private credentials are included.
+- Confirmed the Supabase dashboard now shows the Firebase third-party connection enabled for the existing Nanoware project.
 
-## Verification completed on the implementation tree
+## Current blockers and explicit non-claims
+
+The complete expected environment-variable names are recorded in the readiness report. All eight Firebase/Supabase variables are unset in this runtime, no `.env.local` is present, and Vercel `open-frontier` has no environment variables. The existing Firebase Web App values must be added through an owner-approved secure configuration channel; no API key or config values were put in source or Git. The Supabase URL and anon/publishable key are also still missing from runtime configuration.
+
+Firebase Google provider state, authorized hostnames, and `role: "authenticated"` custom claims were not independently verified. The Supabase registration alone does not prove end-to-end sign-in or data API access. No live user sign-in or data request was run.
+
+The repository has no migration files and its database model documentation is proposed, not authoritative. The deployed Supabase `public` schema has no application tables; inspected tables are Supabase-managed only. Profile/wallet provisioning is not implemented. Do not invent table/column names, migrations, wallet balances, or records. Obtain the authoritative profile/wallet schema, UID uniqueness/mapping rules, existing-row semantics, and safe non-production test access before implementing provisioning. Never merge accounts by email.
+
+RLS and cross-user isolation remain unverified: there are no application tables/policies to test and no test users were used. No policies or data were modified.
+
+## Verification
 
 - `npm test` — passed, 9 tests.
 - `npm run lint` — passed.
 - `npm run typecheck` — passed.
 - `NEXT_TELEMETRY_DISABLED=1 npm run build` — passed.
 - `npm audit` — passed, zero vulnerabilities reported.
-- `git diff --check` — passed.
+- `git diff --check` — rerun before the follow-up commit.
 
 These are local unit/static/build checks. Generated-key token tests are not live Firebase/Supabase integration tests.
 
-## Blockers and explicit non-claims
+## Owner actions still required
 
-The exact existing Nanoware Firebase Project ID and Web App values are not available. They are deliberately not guessed. Consequently, live Firebase authentication, Supabase third-party registration, Vercel Preview configuration, and RLS behavior remain unverified.
+1. Configure all required Firebase and Supabase public runtime variables through a secure local ignored file and/or Vercel environment settings. Do not commit them or use privileged credentials as browser variables.
+2. Confirm Google is enabled in the existing Firebase project and authorize the exact local and Vercel Preview hostnames.
+3. Verify trusted server-side assignment of `role: "authenticated"` for existing and new users while preserving other custom claims.
+4. Provide the authoritative profile/wallet schema, mappings, RLS policies, and safe non-production test access.
+5. After configuration/schema are available, run separate live tests for sign-in, claims, token refresh/logout, existing-record preservation, and cross-user RLS isolation.
 
-Automatic profile/wallet provisioning is **not implemented**. The repository describes its data model as Proposed and contains no authoritative executable profile/wallet schema, migration, uniqueness constraint, or deployed RLS policy. Do not guess table/column names or create rows. To implement idempotent provisioning safely, obtain the actual deployed schema/migrations and safe non-production Supabase access. Use Firebase UID as the unique identity key, never merge by email, and preserve existing profile and wallet rows.
-
-## Owner actions required
-
-1. Supply the exact existing Nanoware Firebase Project ID and existing Firebase Web App configuration; do not create another project or OAuth client.
-2. In the existing Firebase project, confirm Google is enabled and authorize the exact local and Vercel Preview hostnames.
-3. In a trusted Nanoware server environment, ensure authorized existing and newly created users have `role: "authenticated"` while preserving other custom claims.
-4. Register that exact Firebase project in the existing Supabase project's Third-Party Auth settings, configure the existing Open Frontier Supabase URL/key, and test existing RLS without weakening it.
-5. Provide the actual profile/wallet schema and a safe non-production test environment before profile provisioning is implemented.
-6. Run live non-production tests for sign-in/cancel, restoration, refresh, logout, claim rejection, cross-user isolation, and RLS; report these separately from unit tests.
-
-The branch was pushed without merging or deploying. The unrelated dirty `/home/ubuntu/OpenFrontier` TASK-004 checkout was not touched.
+The existing implementation and handover commits are on `task/001-google-oauth`. The current documentation continuation will be committed and pushed only to that branch. No merge or deployment is authorized or planned. The unrelated dirty `/home/ubuntu/OpenFrontier` TASK-004 checkout remains untouched.

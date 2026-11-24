@@ -1,6 +1,6 @@
 # Nanoware Firebase identity for Open Frontier
 
-**Status: Implemented for the application auth path; owner configuration and live verification are pending.** Firebase is the sole identity authority. Open Frontier retains its existing Supabase project/database, and Firebase UID (`sub`) is the canonical user identity. No new Firebase project, Google OAuth client, or Firebase user migration is part of this change.
+**Status: Application auth path implemented; Supabase Firebase third-party provider registered; runtime configuration and live verification remain pending.** Firebase is the sole identity authority. Open Frontier retains its existing Supabase project/database, and Firebase UID (`sub`) is the canonical user identity. No new Firebase project, Google OAuth client, or Firebase user migration is part of this change.
 
 ## Application configuration
 
@@ -19,7 +19,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<existing Supabase anon/publishable key>
 
 ### Vercel Preview environment
 
-In Vercel → the Open Frontier project → Settings → Environment Variables, add the variables above to the **Preview** environment. Populate `NEXT_PUBLIC_FIREBASE_PROJECT_ID` with the existing Nanoware project ID, not a guessed value. Populate the Supabase URL and anon/publishable key with the existing Open Frontier project values. Keep Development and Production values separately scoped as appropriate; do not copy secrets into Preview. Redeploy the Preview deployment after saving variables because Next.js embeds `NEXT_PUBLIC_*` settings into the browser build.
+The Vercel `open-frontier` project's environment-variable listing was empty during the 2026-11-24 inspection. No local `.env.local` existed and all eight expected variables were unset in the inspection runtime. The owner must configure the required values through an approved local ignored file and/or Vercel Settings → Environment Variables. Populate `NEXT_PUBLIC_FIREBASE_PROJECT_ID` with the existing Nanoware project ID and Supabase URL/anon key with the existing Open Frontier values. Scope Vercel settings to the intended deployment environments; do not commit configuration values. Redeploy a Preview only after the owner configures it, because Next.js embeds `NEXT_PUBLIC_*` settings into the browser build.
 
 In the existing Firebase project, make sure the exact hostname(s) used by the Vercel Preview deployment are present in Firebase Authentication's authorized domains. The actual Preview hostname is not available in this repository, so the owner must select it from Vercel and add that exact host. For local development, use `localhost` as required by Firebase's Google sign-in setup [4]. Do not broaden the domain allowlist unnecessarily.
 
@@ -38,9 +38,9 @@ Do not put Admin SDK credentials in this repository, Vercel browser variables, o
 
 ## Supabase third-party authentication
 
-In the **existing Open Frontier Supabase project**, open Authentication → Third-Party Auth and add Firebase as a provider. Enter the exact Nanoware Firebase Project ID from the existing project's Firebase settings. Do not create another Supabase project or change the database. Supabase's supported browser client integration passes the current Firebase ID token through the `accessToken` callback and requires the `authenticated` custom claim [1]. This repository now uses that callback while disabling Supabase-owned browser session persistence; Firebase owns login persistence and refresh.
+The existing OpenFrontier Supabase dashboard initially showed no third-party provider. On 2026-11-24, the owner-authorized Firebase connection was created using the confirmed existing Nanoware Firebase Project ID; the dashboard confirmed it was enabled. No database settings were changed. Supabase's supported browser client integration passes the current Firebase ID token through the `accessToken` callback and requires the `authenticated` custom claim [1]. This repository uses that callback while disabling Supabase-owned browser session persistence; Firebase owns login persistence and refresh. The registration itself does not verify live sign-in or data access.
 
-Keep all existing RLS enabled and unchanged. Do not add permissive policies or use a service-role key to work around authorization. Supabase Hosted checks that a Firebase project is registered; the Firebase project's issuer and audience must match the configured project [1]. The repository contains no executable Supabase schema, migrations, or deployed RLS policies, so this code change cannot verify existing policy behavior against a live database. The owner must test each existing table, view, storage bucket, and realtime resource against current RLS before enabling it with Firebase tokens. Do not claim RLS verification based on this repository alone.
+Keep all existing RLS enabled and unchanged. Do not add permissive policies or use a service-role key to work around authorization. Supabase Hosted checks that a Firebase project is registered; the Firebase project's issuer and audience must match the configured project [1]. The repository contains no migration files, and the inspected live `public` schema has no application tables. Its 41-table inventory contains only Supabase-managed tables. No application RLS policy or profile/wallet table was available to verify. The owner must provide authoritative schema and a safe non-production environment before testing table, view, storage, or realtime access. Do not claim RLS verification based on this repository alone.
 
 ## Identity and server authorization behavior
 
@@ -56,12 +56,12 @@ Before implementing idempotent provisioning, the owner must provide the actual d
 
 ## Owner verification checklist
 
-1. Supply the exact existing Nanoware Firebase Project ID and Web App config; use them for local and Vercel Preview values.
+1. Configure the exact existing Nanoware Firebase Web App values and Open Frontier Supabase URL/anon key in local ignored configuration and/or Vercel. The Vercel project was empty at inspection time.
 2. Confirm Google is enabled on that same Firebase project and allow the exact local/Preview hostnames.
 3. Assign or validate `role: "authenticated"` for existing and newly authorized users while preserving their other custom claims.
-4. Register that exact Firebase Project ID as a third-party auth provider in the existing Supabase project.
-5. Verify existing RLS policies with a Firebase user and confirm one user's rows cannot be accessed by another UID. Do not weaken policies to make tests pass.
-6. Provide the actual profile/wallet schema and safe test access before requesting provisioning implementation.
+4. Firebase third-party auth is already registered and enabled in the existing Supabase project; verify it with live non-production sign-in after runtime configuration and claims are ready.
+5. Provide the authoritative profile/wallet schema, ownership/uniqueness rules, and safe test access before requesting provisioning implementation.
+6. Verify RLS with Firebase users and confirm one user's rows cannot be accessed by another UID. Do not weaken policies to make tests pass.
 7. Test sign-in, cancellation, session restoration, token refresh, sign-out, invalid/expired/wrong-project tokens, RLS, and ownership against the non-production Firebase/Supabase configuration. Record live checks separately from unit tests.
 
 ## References
