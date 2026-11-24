@@ -13,3 +13,5 @@ Move a task only when its status and handover support the move. Do not delete ta
 ## Task specification template
 
 See [`task-template.md`](task-template.md). Every task must include ID/title, objective, context/requirements, scope and out-of-scope, dependencies, files/components, acceptance criteria, testing requirements, and expected deliverables.
+
+See [`backlog.md`](backlog.md) for the current prioritized implementation backlog. Tasks in `blocked/` require explicit decisions or technical prerequisites; tasks in `completed/` retain their acceptance evidence and handover.

@@ -1,102 +1,43 @@
 # Token economy and accounting
 
-**Status: Proposed; critical founder/security approval required.** Open Frontier's wallet currency is actual LLM token units. The database is authoritative. A browser, cache, ad callback, or model response cannot directly set a balance.
+**Status: Core accounting formula specified; reward, payment, and overage policies remain unapproved.** The database is authoritative for posted OFTens. Browsers, caches, provider callbacks, and model responses cannot set a balance directly.
 
-## Representation
+## OFTen denomination and usage debit
 
-Store token quantities as signed integer counts in the smallest supported unit. Store input and output quantities separately. A model-price configuration contains effective-dated integer price-per-million-input and price-per-million-output values, currency metadata, source, and version. The ledger stores the pricing version and policy snapshot used for the decision, so future price changes cannot rewrite history.
+The approved accounting rule for this foundation is:
 
-If the product displays one balance while models have different costs, the product must define a conversion policy before launch. The safest initial policy is to reserve and settle the priced input/output units for the selected model, with a deterministic conversion into the account's spendable token unit. Do not call differently priced model tokens interchangeable without an approved conversion rule.
+- 1 input token = 1 OFTen.
+- 1 output token = 3 OFTens.
+- `actual_debit_oftens = actual_input_tokens + 3 × actual_output_tokens`.
 
-## Ledger states
+Counts and posted movements are integers. Cached-input and cache-write counts are recorded as subdivisions of the provider's total input count for provider-cost reporting; they do not change the OFTen formula. The database rejects invalid subdivisions, negative counts, and values outside the supported integer range. A zero-usage settlement records usage but does not insert a zero-value ledger entry.
 
-A request creates a `reservation` entry with a unique request ID. Final usage creates a `debit` entry against that reservation. Unused reserved quantity creates a `release` entry. Provider failure before billable usage creates a full release. An uncertain or disputed provider charge creates a `pending_reconciliation` record rather than an untraceable balance change. Rewarded ads create `reward_credit` entries only after verified, non-replayed completion. Payments create `topup_credit` entries only after verified success. Refunds and administrative corrections are separate signed entries with a reason and actor.
+There is no USD-to-OFTen conversion, model-price-to-OFTen conversion, promotional-credit grant, or assumed exchange rate in these migrations. Rewards and top-ups are not implemented as automatic sources of balance. Their eligibility, amounts, verification, and accounting require separate approval and implementation.
 
-The balance is a projection of immutable entries, optionally materialized for reads. Every balance-affecting operation has a unique idempotency key. The invariant is `available = grants + releases + refunds - reservations - debits`, subject to the chosen state model, and `available >= 0` must be enforced transactionally.
+## Provider costs are separate
 
-## Reservation and settlement algorithm
+`model_price_versions` stores effective-dated model/provider cost rates independently for uncached input, cached input, cache-write input, and output, with a provider-cost currency and source. The settlement RPC records provider-reported cost (when supplied) separately from estimated cost computed from the selected price version and verified usage dimensions. Neither provider-cost value determines the OFTen debit.
 
-1. Begin a database transaction and lock the account balance row or use a serializable transaction.
-2. Check the request idempotency record. Return the previous result if it already finalized.
-3. Calculate a worst-case reservation from the selected model, context, maximum output, and approved safety margin.
-4. Reject if available balance is less than the reservation.
-5. Insert a reservation ledger entry and update the balance projection with a guarded subtraction.
-6. Commit before calling the provider.
-7. On terminal usage, begin another transaction, lock the request, insert exactly one debit for actual verified usage, insert a release for unused reservation, and mark the request settled.
-8. On verified no-bill failure, release the full reservation. On uncertainty, mark reconciliation required and do not silently choose a favorable balance.
+The cost estimate is computed from the relevant usage counts and per-million-token rates. Price versions and reported usage are retained for auditability. No currency conversion is performed. Missing or changing provider billing dimensions must be handled by a separately approved operational policy; the database does not infer an OFTen exchange rate.
 
-The design explicitly rejects `GREATEST(0, balance + delta)`: that operation can hide a negative-accounting condition while failing to produce a correct ledger record.
+## Profiles, wallet projection, ledger, and holds
 
-## Corrected SQL examples
+Firebase UID is the canonical user identity. A profile has an internal UUID key and a unique Firebase UID; ownership helpers validate the Firebase issuer, audience, and authenticated role before mapping the UID to the internal key. Provisioning is restricted to a service-role RPC keyed by UID. It does not merge users by email or grant balance. Existing profiles and ledger-derived wallet state must be preserved.
 
-These examples are conceptual PostgreSQL SQL, not migrations. They require review against the final schema and transaction isolation policy.
+`token_ledger` is append-only posted history. `reservation_holds` is temporary authorization, not a ledger movement. `wallet_accounts` is a projection: posted balance is the sum of ledger movements, held balance is the active holds, and available balance is posted less held. The client cannot write financial records or balances. A restricted `wallet_ledger_public` invoker-rights view exposes only approved ledger fields for an authenticated owner's rows; raw provider metadata and internal accounting identifiers are not exposed through it.
 
-```sql
--- One reservation attempt. The guarded predicate prevents negative balance.
-begin;
-select available_tokens
-from account_balances
-where account_id = :account_id
-for update;
+Reservation, provider-state, settlement, release, refund, and projection updates are performed through transactional RPCs. They lock the profile before the accounting request, enforce request fingerprints/idempotency, and avoid client-supplied identity as an authorization source. Same-payload retries replay stored results; conflicting retries fail. Refunds are append-only, tied to a settled accounting request, and cumulatively capped at its settled usage debit.
 
-select status, result_json
-from accounting_requests
-where idempotency_key = :key
-for update;
+## Settlement and uncertainty
 
--- If no prior request exists and available_tokens >= :reserve_tokens:
-insert into accounting_requests
-  (idempotency_key, account_id, kind, status, reserved_tokens)
-values
-  (:key, :account_id, 'inference', 'reserved', :reserve_tokens);
+For verified usage within the active hold, settlement atomically closes the hold, records provider usage and cost fields, posts at most one debit for `input + 3 × output`, updates request state, and refreshes the wallet projection. Unused reserved OFTens become available when the hold closes. A verified no-bill outcome may release a hold without a debit. An uncertain provider outcome remains pending reconciliation with the hold retained.
 
-update account_balances
-set available_tokens = available_tokens - :reserve_tokens,
-    updated_at = now()
-where account_id = :account_id
-  and available_tokens >= :reserve_tokens;
--- Require exactly one updated row; otherwise rollback as insufficient balance.
+If verified usage exceeds the hold, the system preserves provider usage and cost records and moves the request to `pending_reconciliation`; it does not truncate usage, silently debit beyond the authorized hold, invent credits, or let the balance become unauthorized negative. The overage record and hold remain available for an authorized resolution. The following are intentionally unresolved pending founder approval: who absorbs or collects overage, whether/when to restrict further requests, whether a user may ever authorize additional debit, timeout/expiry behavior, and the evidence/authority required for reconciliation. No platform-funded, user-billed, or write-off policy is implied.
 
-insert into token_ledger
-  (account_id, request_id, entry_type, amount_tokens, pricing_version, metadata)
-values
-  (:account_id, :request_id, 'reservation', -:reserve_tokens, :pricing_version, :metadata);
-commit;
-```
+## Testable invariants
 
-```sql
--- Settlement is idempotent and must run once for the locked request.
-begin;
-select * from accounting_requests
-where idempotency_key = :key
-for update;
+The disposable PostgreSQL suite verifies migration application, UID ownership and issuer checks through a local `auth` shim, cross-user isolation, redacted ledger access and grants, exact OFTen arithmetic, separate provider-cost recording, duplicate reservation/settlement behavior, concurrent reservations, releases, capped concurrent refunds, correction rollback comparison, and reapplication. These local checks are not a live Supabase/Firebase integration test and do not certify production readiness.
 
--- If status is already settled/released, return the stored result.
--- Otherwise actual usage is verified and bounded by the reservation.
-insert into token_ledger
-  (account_id, request_id, entry_type, amount_tokens, pricing_version, metadata)
-values
-  (:account_id, :request_id, 'debit', -:actual_tokens, :pricing_version, :usage_metadata);
+## Decisions still required
 
-insert into token_ledger
-  (account_id, request_id, entry_type, amount_tokens, pricing_version, metadata)
-values
-  (:account_id, :request_id, 'release', :unused_reserved_tokens, :pricing_version, :release_metadata);
-
-update account_balances
-set available_tokens = available_tokens + :unused_reserved_tokens,
-    updated_at = now()
-where account_id = :account_id;
-
-update accounting_requests
-set status = 'settled', actual_tokens = :actual_tokens,
-    settled_at = now(), result_json = :result
-where idempotency_key = :key and status = 'reserved';
-commit;
-```
-
-The application must verify that the debit is non-negative, does not exceed the reservation without an approved additional-reservation path, and that all inserts have unique constraints on `(request_id, entry_type)` where one entry is allowed. A reconciliation job compares provider usage/cost metadata, gateway reports, ledger entries, and account projections.
-
-## Accounting threat controls
-
-Use row locks or serializable transactions, unique idempotency keys, immutable entries, append-only corrections, effective-dated pricing, request-level audit IDs, bounded reservations, provider spend limits, timeout handling, reconciliation states, and alerts for negative projections, duplicate callbacks, unknown usage, or ledger/projection divergence.
+Before production use, obtain explicit approval for reward and payment funding flows, promotional-credit policy, provider-cost currency/conversion/reporting requirements, overage resolution and timeout policy, refund authority and evidence, retention, audit access, and applicable security review. Do not seed prices or grant balances until their values and source are approved.

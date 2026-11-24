@@ -5,3 +5,5 @@ A handover is mandatory for every completed or paused work unit. It must be unde
 Name reports `YYYY-MM-DD-<task-id>-<short-name>.md`. Include completed work, changed files, commits/PRs, decisions, tests, outstanding work, blockers, and next steps. Link the task and any ADRs. Never include secrets.
 
 Use [`handover-template.md`](handover-template.md). A handover does not replace the task specification; it records what actually happened.
+
+Recent database foundation continuation: [`TASK-003 database foundation correction`](2026-11-24-TASK-003-database-foundation-correction.md).
