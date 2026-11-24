@@ -33,7 +33,7 @@ RLS and cross-user isolation are **not verified**. There are no application tabl
 
 On `/home/ubuntu/OpenFrontier-task001`, branch `task/001-google-oauth`, the following checks passed: `npm test` (9/9), `npm run lint`, `npm run typecheck`, `NEXT_TELEMETRY_DISABLED=1 npm run build`, and `npm audit` (zero vulnerabilities). Unit tests use generated local RSA keys/mocks; they are not live Firebase, Supabase, provisioning, or RLS tests. The build-generated `next-env.d.ts` change was restored and `git diff --check` passed. No merge or deployment was performed.
 
-The verified follow-up documentation commit and matching remote SHA will be recorded in the final handover after push.
+The follow-up documentation commit is `0367e238ebd757e2ed0daca839c00a9bc434ba0c`; `git ls-remote origin refs/heads/task/001-google-oauth` returned the same SHA. The branch was clean and matched the remote after push.
 
 ## References
 

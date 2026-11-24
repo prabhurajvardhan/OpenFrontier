@@ -40,4 +40,4 @@ These are local unit/static/build checks. Generated-key token tests are not live
 4. Provide the authoritative profile/wallet schema, mappings, RLS policies, and safe non-production test access.
 5. After configuration/schema are available, run separate live tests for sign-in, claims, token refresh/logout, existing-record preservation, and cross-user RLS isolation.
 
-The existing implementation and handover commits are on `task/001-google-oauth`. The current documentation continuation will be committed and pushed only to that branch. No merge or deployment is authorized or planned. The unrelated dirty `/home/ubuntu/OpenFrontier` TASK-004 checkout remains untouched.
+The implementation commit is `963204a6807c833643837fa753205b8372e609e4`; the initial handover commit is `62e80929e8072232342d2e38c13854eb4011c114`. The readiness documentation commit `0367e238ebd757e2ed0daca839c00a9bc434ba0c` was pushed to `origin/task/001-google-oauth` and verified against the remote. No merge or deployment was performed. The unrelated dirty `/home/ubuntu/OpenFrontier` TASK-004 checkout remains untouched.
