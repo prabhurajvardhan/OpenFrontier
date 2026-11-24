@@ -81,6 +81,10 @@ alter table public.inference_requests drop constraint if exists inference_reques
 revoke all on public.token_ledger from anon, authenticated;
 grant select (id, entry_type, amount_units, created_at) on public.token_ledger to authenticated;
 grant update (display_name) on public.profiles to authenticated;
+grant truncate on public.profiles, public.wallet_accounts, public.accounting_requests,
+  public.inference_requests, public.reservation_holds, public.token_ledger,
+  public.provider_usage_records, public.overage_reconciliations, public.model_price_versions
+  to service_role;
 grant insert, update, delete on public.profiles, public.wallet_accounts, public.accounting_requests,
   public.inference_requests, public.reservation_holds, public.token_ledger,
   public.provider_usage_records, public.overage_reconciliations to service_role;

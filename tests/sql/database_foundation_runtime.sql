@@ -35,14 +35,52 @@ values (:'profile_b'::uuid, 'admin_adjustment', 1000, 'task003-fixture-opening-b
 select public.refresh_wallet_projection(:'profile_a'::uuid);
 select public.refresh_wallet_projection(:'profile_b'::uuid);
 
--- Duplicate Firebase UID provisioning returns the same internal profile and does not reset its wallet.
+-- Repeated Firebase UID provisioning preserves all wallet values and ledger history.
 do $$
-declare v_id uuid; v_posted bigint;
+declare
+  v_id uuid;
+  v_posted bigint;
+  v_held bigint;
+  v_available bigint;
+  v_iteration integer;
+  v_count_before bigint;
+  v_sum_before numeric;
+  v_history_before text;
+  v_count_after bigint;
+  v_sum_after numeric;
+  v_history_after text;
 begin
-  v_id := public.provision_firebase_profile('task003-fixture-firebase-uid-a');
-  if v_id <> current_setting('task.profile_a')::uuid then raise exception 'FAIL: UID provisioning changed profile id'; end if;
-  select posted_units into v_posted from public.wallet_accounts where profile_id = v_id;
-  if v_posted <> 1000 then raise exception 'FAIL: UID provisioning changed wallet projection'; end if;
+  v_id := current_setting('task.profile_a')::uuid;
+  select posted_units, held_units, available_units
+    into v_posted, v_held, v_available
+    from public.wallet_accounts where profile_id = v_id;
+  if v_posted <> 1000 or v_held <> 0 or v_available <> 1000 then
+    raise exception 'FAIL: unexpected pre-provisioning wallet snapshot (%, %, %)', v_posted, v_held, v_available;
+  end if;
+  select count(*), coalesce(sum(l.amount_units), 0),
+         md5(coalesce(string_agg(to_jsonb(l)::text, E'\n' order by l.id), ''))
+    into v_count_before, v_sum_before, v_history_before
+    from public.token_ledger l where l.profile_id = v_id;
+
+  for v_iteration in 1..3 loop
+    if public.provision_firebase_profile('task003-fixture-firebase-uid-a') <> v_id then
+      raise exception 'FAIL: repeated UID provisioning changed profile id';
+    end if;
+  end loop;
+
+  select posted_units, held_units, available_units
+    into v_posted, v_held, v_available
+    from public.wallet_accounts where profile_id = v_id;
+  if v_posted <> 1000 or v_held <> 0 or v_available <> 1000 then
+    raise exception 'FAIL: repeated provisioning changed wallet snapshot (%, %, %)', v_posted, v_held, v_available;
+  end if;
+  select count(*), coalesce(sum(l.amount_units), 0),
+         md5(coalesce(string_agg(to_jsonb(l)::text, E'\n' order by l.id), ''))
+    into v_count_after, v_sum_after, v_history_after
+    from public.token_ledger l where l.profile_id = v_id;
+  if v_count_after <> v_count_before or v_sum_after <> v_sum_before or v_history_after <> v_history_before then
+    raise exception 'FAIL: repeated provisioning changed token ledger history';
+  end if;
 end $$;
 
 -- Firebase JWT claims scope every client-facing table to one UID, not auth.uid()/email.
@@ -129,6 +167,7 @@ commit;
 reset role;
 
 do $$
+declare v_table text;
 begin
   if has_table_privilege('anon','public.profiles','SELECT') then raise exception 'FAIL: anon can read profiles'; end if;
   if has_table_privilege('anon','public.wallet_ledger_public','SELECT') then raise exception 'FAIL: anon can read ledger view'; end if;
@@ -136,7 +175,26 @@ begin
   if has_function_privilege('authenticated','public.settle_inference_usage(uuid,uuid,text,bigint,bigint,bigint,bigint,numeric,text,jsonb)','EXECUTE') then raise exception 'FAIL: authenticated can settle usage'; end if;
   if has_table_privilege('service_role','public.token_ledger','INSERT') then raise exception 'FAIL: service_role can bypass accounting RPCs with direct INSERT'; end if;
   if not has_function_privilege('service_role','public.provision_firebase_profile(text)','EXECUTE') then raise exception 'FAIL: service_role lacks provisioning RPC'; end if;
+  foreach v_table in array array['profiles','wallet_accounts','accounting_requests','inference_requests','reservation_holds',
+    'token_ledger','provider_usage_records','overage_reconciliations','model_price_versions'] loop
+    if has_table_privilege('service_role', format('public.%I', v_table), 'TRUNCATE') then
+      raise exception 'FAIL: service_role can TRUNCATE protected table public.%', v_table;
+    end if;
+  end loop;
 end $$;
+
+begin;
+set local role service_role;
+do $$
+begin
+  begin
+    execute 'truncate table public.token_ledger';
+    raise exception 'FAIL: service_role unexpectedly truncated public.token_ledger';
+  exception when insufficient_privilege then
+    raise notice 'PASS: service_role TRUNCATE denied on public.token_ledger';
+  end;
+end $$;
+rollback;
 
 -- Model-specific provider cost ranges cannot overlap, and are never converted into OFTens.
 do $$

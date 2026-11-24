@@ -546,6 +546,11 @@ $$;
 revoke insert, update, delete on public.profiles, public.wallet_accounts, public.accounting_requests,
   public.inference_requests, public.reservation_holds, public.token_ledger,
   public.provider_usage_records, public.overage_reconciliations from anon, authenticated, service_role;
+-- TRUNCATE bypasses row-level append-only/locking triggers; callers must use the authorized RPCs.
+revoke truncate on public.profiles, public.wallet_accounts, public.accounting_requests,
+  public.inference_requests, public.reservation_holds, public.token_ledger,
+  public.provider_usage_records, public.overage_reconciliations, public.model_price_versions
+  from service_role;
 grant update (display_name) on public.profiles to authenticated;
 revoke all on function public.provision_firebase_profile(text) from public, anon, authenticated;
 revoke all on function public.create_inference_reservation(uuid,uuid,uuid,text,text,bigint,timestamptz) from public, anon, authenticated;
